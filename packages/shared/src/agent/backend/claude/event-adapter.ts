@@ -85,6 +85,17 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
   private pendingText: string | null = null;
   private manualCompactionRequested = false;
   private manualCompactionBoundarySeen = false;
+  /**
+   * Chain-rewind anchor tracking (per turn). `SDKAssistantMessage.message.id` is the
+   * Messages-API id (`msg_…`) — NOT a transcript chain entry. `resumeSessionAt` needs
+   * the JSONL chain UUID (`SDKAssistantMessage.uuid`), and per the SDK docs the safest
+   * fork point is the KEPT turn's LAST top-level chain entry (which with tool use is
+   * often a trailing user/tool_result entry, not the last assistant message). We track
+   * the last top-level chain UUID seen and the msg-id of the last final text, then emit
+   * a `claude_turn_anchor` at result time so SessionManager can persist the pair.
+   */
+  private lastTopLevelChainUuid: string | undefined;
+  private lastFinalTextTurnId: string | undefined;
 
   // Session-persistent state (survives across turns)
   /**
@@ -118,6 +129,8 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     this.lastAssistantUsage = null;
     this.manualCompactionRequested = false;
     this.manualCompactionBoundarySeen = false;
+    this.lastTopLevelChainUuid = undefined;
+    this.lastFinalTextTurnId = undefined;
   }
 
   // ============================================================
@@ -220,6 +233,7 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
         turnId: this.currentTurnId || undefined,
       };
       this.pendingText = null;
+      this.rememberFinalTextTurnId();
       return event;
     }
     return null;
@@ -257,6 +271,18 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
   // Per-message-type Handlers
   // ============================================================
 
+  /** Remember a top-level (non-sidechain) chain entry UUID as a rewind-anchor candidate. */
+  private rememberTopLevelChainUuid(message: SDKMessage): void {
+    if ((message as any).parent_tool_use_id !== null) return;
+    const uuid = (message as any).uuid;
+    if (typeof uuid === 'string' && uuid) this.lastTopLevelChainUuid = uuid;
+  }
+
+  /** Remember the msg-id of the latest final (non-intermediate) text — identifies the Craft message the anchor attaches to. */
+  private rememberFinalTextTurnId(): void {
+    if (this.currentTurnId) this.lastFinalTextTurnId = this.currentTurnId;
+  }
+
   private async adaptAssistant(message: SDKMessage, events: AgentEvent[]): Promise<void> {
     // Check for SDK-level errors FIRST (auth, network, rate limits, etc.)
     if ('error' in message && message.error) {
@@ -271,6 +297,9 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     if ('isReplay' in message && message.isReplay) {
       return;
     }
+
+    // Chain-rewind anchor candidate (top-level entries only; replays excluded)
+    this.rememberTopLevelChainUuid(message);
 
     // Track usage from non-sidechain assistant messages
     const isSidechain = (message as any).parent_tool_use_id !== null;
@@ -384,6 +413,7 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
           turnId: this.currentTurnId || undefined,
           parentToolUseId: (message as any).parent_tool_use_id || undefined,
         });
+        if (!isIntermediate) this.rememberFinalTextTurnId();
         this.pendingText = null;
       }
     }
@@ -431,6 +461,10 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     if ('isReplay' in message && message.isReplay) {
       return;
     }
+
+    // Chain-rewind anchor candidate: a turn ending in a tool session may have a
+    // trailing top-level user/tool_result entry as its LAST chain entry.
+    this.rememberTopLevelChainUuid(message);
 
     // Tool result matching
     if ((message as any).tool_use_result !== undefined || ('message' in message && (message as any).message)) {
@@ -583,6 +617,16 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     }
 
     if (msg.subtype === 'success') {
+      // Chain-rewind anchor: emitted right before `complete` so SessionManager can
+      // persist the (Craft message id → SDK chain UUID) mapping for this turn. Only
+      // successful turns get anchors; failed/interrupted turns keep their fallback paths.
+      if (this.lastTopLevelChainUuid && this.lastFinalTextTurnId) {
+        events.push({
+          type: 'claude_turn_anchor',
+          sdkMessageId: this.lastFinalTextTurnId,
+          sdkTurnAnchor: this.lastTopLevelChainUuid,
+        });
+      }
       events.push({ type: 'complete', usage });
     } else {
       const errorMsg = 'errors' in msg ? msg.errors.join(', ') : 'Query failed';

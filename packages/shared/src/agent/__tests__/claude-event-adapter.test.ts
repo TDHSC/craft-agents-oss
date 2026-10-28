@@ -483,6 +483,212 @@ describe('ClaudeEventAdapter', () => {
     });
   });
 
+  describe('claude_turn_anchor', () => {
+    const UUID_A = '11111111-1111-4111-8111-111111111111';
+    const UUID_B = '22222222-2222-4222-8222-222222222222';
+    const UUID_C = '33333333-3333-4333-8333-333333333333';
+
+    const resultMsg = {
+      type: 'result',
+      subtype: 'success',
+      usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      total_cost_usd: 0,
+      modelUsage: {},
+      session_id: 'sess-1',
+    } as any;
+
+    async function flushFinalText(msgId: string, text = 'final text') {
+      // message_start captures the msg id (as in the real streamed flow)
+      await adapter.adapt({
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        event: { type: 'message_start', message: { id: msgId } },
+      } as any);
+      // assistant message carrying the text (sets pendingText), then message_delta
+      // with stop_reason end_turn flushes it as a final text_complete.
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_B,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { id: msgId, role: 'assistant', content: [{ type: 'text', text }] },
+      } as any);
+      await adapter.adapt({
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        event: { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+      } as any);
+    }
+
+    it('emits claude_turn_anchor before complete for a plain text turn', async () => {
+      await flushFinalText('msg-1');
+      const events = await adapter.adapt(resultMsg);
+
+      const anchorIdx = events.findIndex(e => e.type === 'claude_turn_anchor');
+      const completeIdx = events.findIndex(e => e.type === 'complete');
+      expect(anchorIdx).toBeGreaterThanOrEqual(0);
+      expect(completeIdx).toBeGreaterThan(anchorIdx);
+      expect(events[anchorIdx]).toEqual({
+        type: 'claude_turn_anchor',
+        sdkMessageId: 'msg-1',
+        sdkTurnAnchor: UUID_B,
+      });
+    });
+
+    it('anchors at the LAST top-level chain entry when a final assistant text follows a tool_result', async () => {
+      // Assistant segment ending in tool_use → intermediate text
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_A,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { id: 'msg-tool', role: 'assistant', content: [
+          { type: 'text', text: 'let me check' },
+          { type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} },
+        ] },
+      } as any);
+      await adapter.adapt({
+        type: 'stream_event', parent_tool_use_id: null, session_id: 'sess-1',
+        event: { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      } as any);
+      // Top-level tool_result entry
+      await adapter.adapt({
+        type: 'user',
+        uuid: UUID_C,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }] },
+        tool_use_result: 'ok',
+      } as any);
+      // Final assistant text is the last chain entry
+      await flushFinalText('msg-final', 'here is the answer');
+
+      const events = await adapter.adapt(resultMsg);
+
+      const anchor = events.find(e => e.type === 'claude_turn_anchor');
+      expect(anchor).toEqual({
+        type: 'claude_turn_anchor',
+        sdkMessageId: 'msg-final',
+        sdkTurnAnchor: UUID_B,
+      });
+    });
+
+    it('keeps a trailing tool_result as the anchor when the turn ends on it', async () => {
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_A,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { id: 'msg-tool', role: 'assistant', content: [
+          { type: 'text', text: 'running it' },
+          { type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} },
+        ] },
+      } as any);
+      await adapter.adapt({
+        type: 'stream_event', parent_tool_use_id: null, session_id: 'sess-1',
+        event: { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      } as any);
+      // Final text arrives BEFORE the trailing tool_result entry
+      await adapter.adapt({
+        type: 'stream_event', parent_tool_use_id: null, session_id: 'sess-1',
+        event: { type: 'message_start', message: { id: 'msg-final' } },
+      } as any);
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_B,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { id: 'msg-final', role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      } as any);
+      await adapter.adapt({
+        type: 'stream_event', parent_tool_use_id: null, session_id: 'sess-1',
+        event: { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+      } as any);
+      await adapter.adapt({
+        type: 'user',
+        uuid: UUID_C,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }] },
+        tool_use_result: 'ok',
+      } as any);
+
+      const events = await adapter.adapt(resultMsg);
+
+      const anchor = events.find(e => e.type === 'claude_turn_anchor');
+      expect(anchor).toEqual({
+        type: 'claude_turn_anchor',
+        sdkMessageId: 'msg-final',
+        sdkTurnAnchor: UUID_C, // trailing tool_result entry is the last chain entry
+      });
+    });
+
+    it('ignores sidechain entries when tracking the anchor candidate', async () => {
+      await flushFinalText('msg-1');
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_C,
+        parent_tool_use_id: 'toolu_parent', // sidechain (subagent)
+        session_id: 'sess-1',
+        message: { id: 'msg-sub', role: 'assistant', content: [{ type: 'text', text: 'subagent output' }] },
+      } as any);
+
+      const events = await adapter.adapt(resultMsg);
+
+      const anchor = events.find(e => e.type === 'claude_turn_anchor');
+      expect((anchor as any)?.sdkTurnAnchor).toBe(UUID_B);
+    });
+
+    it('emits no anchor when the turn produced no final text', async () => {
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_A,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        message: { id: 'msg-tool', role: 'assistant', content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} },
+        ] },
+      } as any);
+      await adapter.adapt({
+        type: 'stream_event', parent_tool_use_id: null, session_id: 'sess-1',
+        event: { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      } as any);
+
+      const events = await adapter.adapt(resultMsg);
+
+      expect(events.some(e => e.type === 'claude_turn_anchor')).toBe(false);
+    });
+
+    it('resets anchor tracking between turns', async () => {
+      await flushFinalText('msg-1');
+      await adapter.adapt(resultMsg);
+
+      adapter.startTurn();
+      const events = await adapter.adapt(resultMsg);
+
+      expect(events.some(e => e.type === 'claude_turn_anchor')).toBe(false);
+    });
+
+    it('skips replayed entries when tracking the anchor candidate', async () => {
+      await adapter.adapt({
+        type: 'assistant',
+        uuid: UUID_A,
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+        isReplay: true,
+        message: { id: 'msg-old', role: 'assistant', content: [{ type: 'text', text: 'replayed' }] },
+      } as any);
+      await flushFinalText('msg-1');
+
+      const events = await adapter.adapt(resultMsg);
+
+      const anchor = events.find(e => e.type === 'claude_turn_anchor');
+      expect((anchor as any)?.sdkTurnAnchor).toBe(UUID_B);
+    });
+  });
+
   describe('system', () => {
     it('should capture sdkTools from init message', async () => {
       await adapter.adapt({
