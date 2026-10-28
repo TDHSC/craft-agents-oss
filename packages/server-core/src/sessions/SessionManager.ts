@@ -1332,6 +1332,23 @@ export function isInQueuedContinuation(queue: ReadonlyArray<{ message: string; m
     || queue.some(other => other.mergeWith === entry)
 }
 
+/**
+ * The recent transcript a backend re-injects when its SDK session is lost. The context is prepended
+ * to the message being sent, so that message (`inFlightIds`) is left out, or it would reach the
+ * model twice.
+ */
+export function recentRecoveryMessages(
+  messages: ReadonlyArray<Pick<Message, 'id' | 'role' | 'content' | 'isIntermediate'>>,
+  inFlightIds: ReadonlyArray<string> = [],
+): Array<{ type: 'user' | 'assistant'; content: string }> {
+  const inFlight = new Set(inFlightIds)
+  return messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .filter(m => !m.isIntermediate && !inFlight.has(m.id))
+    .slice(-6)
+    .map(m => ({ type: m.role as 'user' | 'assistant', content: m.content }))
+}
+
 /** Text redirects cannot carry attachments or options that affect model input. */
 export function canSteerTextPayload(
   attachments?: FileAttachment[],
@@ -4140,16 +4157,7 @@ export class SessionManager implements ISessionManager {
         sessionPersistenceQueue.flush(managed.id)
       }
 
-      const getRecoveryMessages = () => {
-        const relevantMessages = managed.messages
-          .filter(m => m.role === 'user' || m.role === 'assistant')
-          .filter(m => !m.isIntermediate)
-          .slice(-6)
-        return relevantMessages.map(m => ({
-          type: m.role as 'user' | 'assistant',
-          content: m.content,
-        }))
-      }
+      const getRecoveryMessages = () => recentRecoveryMessages(managed.messages, managed.lastSentMessageIds)
 
       const getBranchFallbackMessages = () => {
         if (!managed.branchFromMessageId) return []

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as backendFactory from '../../../shared/src/agent/backend/factory.ts'
-import { SessionManager, createManagedSession, removeTurnAnchors } from './SessionManager.ts'
+import { SessionManager, createManagedSession, recentRecoveryMessages, removeTurnAnchors } from './SessionManager.ts'
 
 // Edit-and-resend (`SendMessageOptions.replaceMessageId`): drop the replaced message and everything
 // after it, rewind the SDK conversation in place, and re-send the new content.
@@ -271,6 +271,22 @@ describe('userMessageId', () => {
       expect(generated).not.toBe(bad)
       expect(generated).toMatch(/^msg-\d+-[a-z0-9]+$/)
     }
+  })
+})
+
+describe('recentRecoveryMessages', () => {
+  it('leaves out the message being sent, which travels as the prompt itself', () => {
+    const messages = [
+      { id: 'u1', role: 'user', content: 'first' },
+      { id: 'a1', role: 'assistant', content: 'reply' },
+      { id: 't1', role: 'assistant', content: 'thinking', isIntermediate: true },
+      { id: 'u2', role: 'user', content: 'edited' },
+    ] as const
+    expect(recentRecoveryMessages(messages as never, ['u2'])).toEqual([
+      { type: 'user', content: 'first' },
+      { type: 'assistant', content: 'reply' },
+    ])
+    expect(recentRecoveryMessages(messages as never).map(m => m.content)).toEqual(['first', 'reply', 'edited'])
   })
 })
 
