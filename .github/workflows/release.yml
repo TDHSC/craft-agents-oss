@@ -90,6 +90,10 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security import "$CERT_TMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -A
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH" >/dev/null
+          # `codesign --keychain` still reports "no identity found" for a keychain
+          # that is not on the user search list (locally the identity is also in
+          # login.keychain-db, which is), so put it first on the list.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
           # A self-signed certificate is only a valid signing identity once it is
           # trusted for code signing (CSSMERR_TP_NOT_TRUSTED otherwise, and codesign
