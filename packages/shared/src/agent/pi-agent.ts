@@ -307,6 +307,9 @@ export class PiAgent extends BaseAgent {
   // queryLlm returns a full LLMQueryResult, not just text.
   private pendingLlmQueries = new Map<string, PendingEphemeralRequest<LLMQueryResult>>();
 
+  // Pending rewind_to_turn requests (edit-and-resend)
+  private pendingRewinds = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
+
   // Pending ensure_session_ready requests (branch preflight handshake)
   private pendingEnsureSessionReady: Map<string, {
     resolve: (sessionId: string | null) => void;
@@ -1016,6 +1019,17 @@ export class PiAgent extends BaseAgent {
         break;
       }
 
+      case 'rewind_to_turn_result': {
+        // Response to a rewind_to_turn request (edit-and-resend)
+        const pending = this.pendingRewinds.get(msg.id as string);
+        if (pending) {
+          this.pendingRewinds.delete(msg.id as string);
+          if (msg.success) pending.resolve();
+          else pending.reject(new Error((msg.errorMessage as string) || 'Pi rewind failed'));
+        }
+        break;
+      }
+
       case 'ensure_session_ready_result':
         // Response to an ensure_session_ready request
         this.handleEnsureSessionReadyResult(msg);
@@ -1095,6 +1109,11 @@ export class PiAgent extends BaseAgent {
 
         // An unscoped subprocess failure invalidates all outstanding utility work.
         this.rejectAllPendingEphemeral(new Error(rawMessage));
+
+        for (const [id, pending] of this.pendingRewinds) {
+          pending.reject(new Error(rawMessage));
+          this.pendingRewinds.delete(id);
+        }
 
         // Reject pending ensure_session_ready requests (used by branch preflight)
         for (const [id, pending] of this.pendingEnsureSessionReady) {
@@ -1904,6 +1923,42 @@ export class PiAgent extends BaseAgent {
 
       this.send({ type: 'ensure_session_ready', id });
     });
+  }
+
+  /**
+   * Ask the subprocess to rewind the live Pi session to `anchorId` (null = before the first message).
+   */
+  private async requestRewind(anchorId: string | null): Promise<void> {
+    await this.ensureSubprocess();
+
+    const id = `rewind-${++this.rpcIdCounter}`;
+    const timeoutMs = 15_000;
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRewinds.delete(id);
+        reject(new Error(`rewind_to_turn timed out after ${Math.floor(timeoutMs / 1000)}s`));
+      }, timeoutMs);
+
+      this.pendingRewinds.set(id, {
+        resolve: () => { clearTimeout(timer); resolve(); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
+
+      this.send({ type: 'rewind_to_turn', id, anchorId });
+    });
+  }
+
+  /**
+   * Edit-and-resend: hard-stop the running turn, then move the Pi session leaf back to the last
+   * kept turn. Returns false when no Pi session exists yet (host reseeds instead); rejects when
+   * the anchor is unusable.
+   */
+  async rewindToTurn(anchorId: string | null): Promise<boolean> {
+    this.forceAbort(AbortReason.Rewind);
+    if (!this.subprocess && !this.piSessionId) return false;
+    await this.requestRewind(anchorId);
+    return true;
   }
 
   /**

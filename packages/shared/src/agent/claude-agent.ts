@@ -469,6 +469,13 @@ export class ClaudeAgent extends BaseAgent {
   private branchFromSdkSessionId: string | null = null;
   private branchFromSdkCwd: string | null = null;
   private branchFromSdkTurnId: string | null = null;
+  /**
+   * One-shot in-place rewind (edit-and-resend): the next query resumes the SAME SDK session
+   * truncated at this chain-entry UUID (`resume` + `resumeSessionAt`, no `forkSession`), so the
+   * session lineage — and every earlier turn anchor — stays valid. Consumed when the options for
+   * that query are built.
+   */
+  private rewindToSdkTurnId: string | null = null;
   private isHeadless: boolean = false;
   private pendingPermissions: Map<string, PendingPermission> = new Map();
   // Permission whitelists are now managed by this.permissionManager (inherited from BaseAgent)
@@ -1194,6 +1201,11 @@ export class ClaudeAgent extends BaseAgent {
       // chatImpl invocation, not state left over from an earlier call.
       const resolvedCwd = this.resolveSpawnCwd({ isRetry: _isRetry, sessionId });
 
+      // One-shot edit-and-resend cutoff (see rewindToSdkTurnId): consumed here so a later turn
+      // never re-applies it, remembered locally to recognise a failed cutoff below.
+      const rewindAt = !_isRetry && this.sessionId ? this.rewindToSdkTurnId : null;
+      this.rewindToSdkTurnId = null;
+
       const options: Options = {
         ...getDefaultOptions(this.config.envOverrides),
         model: effectiveModel,
@@ -1634,7 +1646,10 @@ export class ClaudeAgent extends BaseAgent {
         // Skip resume on retry (after session expiry) to start fresh
         // For branched sessions: fork the parent session so the agent has full conversation context
         ...(!_isRetry && this.sessionId
-          ? { resume: this.sessionId }
+          ? {
+              resume: this.sessionId,
+              ...(rewindAt ? { resumeSessionAt: rewindAt } : {}),
+            }
           : !_isRetry && this.branchFromSdkSessionId
             ? {
                 resume: this.branchFromSdkSessionId,
@@ -1667,7 +1682,7 @@ export class ClaudeAgent extends BaseAgent {
       const wasResuming = !_isRetry && (!!this.sessionId || !!this.branchFromSdkSessionId);
       // Track whether this turn attempted branch-point cutoff via resumeSessionAt.
       // Needed for targeted fallback when the parent message UUID no longer exists server-side.
-      const attemptedBranchCutoff = !_isRetry && !!this.branchFromSdkSessionId && !!this.branchFromSdkTurnId;
+      const attemptedBranchCutoff = !_isRetry && ((!!this.branchFromSdkSessionId && !!this.branchFromSdkTurnId) || !!rewindAt);
 
       // Log resume attempt for debugging session failures
       if (wasResuming) {
@@ -1994,6 +2009,10 @@ This is a branched conversation. All prior messages in this conversation are par
         // Missing-UUID fallback: branch cutoff failed because resumeSessionAt target
         // no longer exists server-side. Retry once by resuming the child session
         // that was already established (without re-applying resumeSessionAt).
+        if (suppressedBranchCutoffError && rewindAt && !_isRetry) {
+          yield* this.recoverFromFailedRewind(userMessage, attachments);
+          return;
+        }
         if (suppressedBranchCutoffError && !_isRetry && this.sessionId) {
           debug('[SESSION_DEBUG] >>> DETECTED MISSING-UUID BRANCH CUTOFF ERROR - retrying on child session without cutoff');
           yield { type: 'info', message: 'Branch point was compacted on server, retrying with nearest available context...' };
@@ -2203,6 +2222,10 @@ This is a branched conversation. All prior messages in this conversation are par
         // Missing-UUID fallback may surface as a generic process-exit error in catch,
         // even after we suppressed the underlying stream error event above.
         // If branch cutoff failed but child session is established, retry once without cutoff.
+        if (suppressedBranchCutoffError && rewindAt && !_isRetry) {
+          yield* this.recoverFromFailedRewind(userMessage, attachments);
+          return;
+        }
         if (suppressedBranchCutoffError && wasResuming && !_isRetry && this.sessionId) {
           debug('[SESSION_DEBUG] >>> TAKING PATH: missing-UUID branch-cutoff fallback from catch');
           yield { type: 'info', message: 'Branch point was compacted on server, retrying with nearest available context...' };
@@ -3028,6 +3051,57 @@ This is a branched conversation. All prior messages in this conversation are par
       this.teardownPersistentQuery('stop-interrupt-failed');
     });
     return true;
+  }
+
+  /**
+   * Rewind the conversation to an earlier turn so an edited message can be re-sent in place.
+   *
+   * Hard-stops any live query first — the keep-alive query bakes `resume` in at creation and may
+   * still hold the discarded turns (or background agents that would write into the new history)
+   * in memory, so the next `chat()` must build a fresh one. Then arms a one-shot cutoff:
+   * `anchorId` is the transcript chain UUID of the last kept turn (`resume` + `resumeSessionAt`,
+   * same SDK session), `null` rewinds before the first message (fresh SDK session).
+   *
+   * Returns false when there is no SDK session to rewind (nothing was ever sent); the host then
+   * reseeds from its own messages instead.
+   */
+  async rewindToTurn(anchorId: string | null): Promise<boolean> {
+    this.forceAbort(AbortReason.Rewind);
+    this.teardownPersistentQuery('rewind');
+    this.rewindToSdkTurnId = null;
+    if (!this.sessionId) return false;
+    if (anchorId === null) {
+      this.clearSdkSessionForReseed();
+      return true;
+    }
+    this.rewindToSdkTurnId = anchorId;
+    return true;
+  }
+
+  /** Forget the SDK session so the next turn starts a fresh one (host reseeds the context). */
+  private clearSdkSessionForReseed(): void {
+    this.sessionId = null;
+    this.branchFromSdkSessionId = null;
+    this.branchFromSdkCwd = null;
+    this.branchFromSdkTurnId = null;
+    this.config.onSdkSessionIdCleared?.();
+    this.pinnedPreferencesPrompt = null;
+    this.pinnedIncludeCoAuthoredBy = null;
+    this.pinnedProjectContext = null;
+    this.preferencesDriftNotified = false;
+  }
+
+  /**
+   * The rewind cutoff was rejected (anchor gone: compacted, or the SDK transcript was deleted).
+   * Retrying without the cutoff would silently keep the turns the user just discarded, so start a
+   * fresh SDK session and restore context from the host's (already truncated) messages instead.
+   */
+  private async *recoverFromFailedRewind(userMessage: string, attachments?: FileAttachment[]): AsyncGenerator<AgentEvent> {
+    debug('[ClaudeAgent] Rewind cutoff rejected by SDK - reseeding a fresh session from host messages');
+    this.clearSdkSessionForReseed();
+    const recoveryContext = this.buildRecoveryContext();
+    yield { type: 'info', message: 'Earlier context was compacted, restoring conversation...' };
+    yield* this.chat(recoveryContext ? recoveryContext + userMessage : userMessage, attachments, { isRetry: true });
   }
 
   /**

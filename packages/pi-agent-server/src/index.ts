@@ -169,6 +169,7 @@ type InboundMessage =
   | { type: 'llm_query'; id: string; request: LLMQueryRequest }
   | { type: 'cancel_ephemeral_query'; id: string }
   | { type: 'ensure_session_ready'; id: string }
+  | { type: 'rewind_to_turn'; id: string; anchorId: string | null }
   | { type: 'set_model'; model: string }
   | { type: 'set_thinking_level'; level: string }
   | { type: 'compact'; id: string; customInstructions?: string }
@@ -222,6 +223,7 @@ interface OutboundLlmQueryResult {
    */
   errorCode?: string;
 }
+interface OutboundRewindToTurnResult { type: 'rewind_to_turn_result'; id: string; success: boolean; errorMessage?: string }
 interface OutboundEnsureSessionReadyResult { type: 'ensure_session_ready_result'; id: string; sessionId: string | null }
 interface OutboundCompactResult {
   type: 'compact_result';
@@ -256,6 +258,7 @@ type OutboundMessage =
   | OutboundMiniResult
   | OutboundLlmQueryResult
   | OutboundEnsureSessionReadyResult
+  | OutboundRewindToTurnResult
   | OutboundCompactResult
   | OutboundSetAutoCompactionResult
   | OutboundRuntimeConfigUpdateResult
@@ -1595,6 +1598,45 @@ async function handleEnsureSessionReady(msg: Extract<InboundMessage, { type: 'en
   });
 }
 
+/**
+ * Edit-and-resend: move the live session's leaf back to an earlier turn, in place.
+ *
+ * Goes through `navigateTree` (not a bare `sessionManager.branch()`): only it refreshes the
+ * AgentSession's in-memory context, so the discarded turns really leave the next request.
+ * `anchorId` is the entry id recorded in `pi_turn_anchor` for the last KEPT assistant message;
+ * `null` rewinds before the first message (navigating to the root user entry resets the leaf).
+ */
+async function handleRewindToTurn(msg: Extract<InboundMessage, { type: 'rewind_to_turn' }>): Promise<void> {
+  try {
+    const session = await ensureSession();
+    // navigateTree refuses while streaming; the host already hard-stopped the turn, wait for idle.
+    if (session.isStreaming) await session.abort();
+
+    let targetId = msg.anchorId;
+    if (targetId && !session.sessionManager.getEntry(targetId)) {
+      throw new Error(`Rewind anchor not found: ${targetId}`);
+    }
+    if (!targetId) {
+      const root = session.sessionManager
+        .getEntries()
+        .find((e) => e.type === 'message' && e.parentId === null && e.message.role === 'user');
+      targetId = root?.id ?? null;
+    }
+    if (targetId) await session.navigateTree(targetId, { summarize: false });
+
+    // Drop speculative prefetches tied to the discarded turns.
+    prefetchCache.clear();
+    send({ type: 'rewind_to_turn_result', id: msg.id, success: true });
+  } catch (error) {
+    send({
+      type: 'rewind_to_turn_result',
+      id: msg.id,
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function handleCompact(msg: Extract<InboundMessage, { type: 'compact' }>): Promise<void> {
   const epoch = compactionEpoch;
   const startedAt = Date.now();
@@ -1858,6 +1900,10 @@ async function processMessage(msg: InboundMessage): Promise<void> {
 
     case 'cancel_ephemeral_query':
       handleCancelEphemeralQuery(msg);
+      break;
+
+    case 'rewind_to_turn':
+      await handleRewindToTurn(msg);
       break;
 
     case 'ensure_session_ready':

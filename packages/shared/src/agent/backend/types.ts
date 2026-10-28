@@ -378,6 +378,16 @@ export interface AgentBackend {
   forceAbort(reason: AbortReason): void;
 
   /**
+   * Edit-and-resend: rewind the live conversation in place so the next turn continues from an
+   * earlier point. `anchorId` is the SDK turn anchor persisted for the last KEPT assistant message
+   * (Claude transcript chain UUID / Pi entry id); `null` rewinds before the first message.
+   * Hard-stops any running turn first. Resolves true when the backend rewound natively, false when
+   * it cannot (no SDK session yet) and the host must reseed the context from its own messages.
+   * Rejects when the anchor is unusable; the host then falls back to reseeding.
+   */
+  rewindToTurn?(anchorId: string | null): Promise<boolean>;
+
+  /**
    * Stop the running turn but keep the session's background work (background agents, Workflows,
    * shells) alive, like Esc in Claude Code. Returns false when the backend can't (no live
    * keep-alive turn); the caller then hard-stops with forceAbort.
