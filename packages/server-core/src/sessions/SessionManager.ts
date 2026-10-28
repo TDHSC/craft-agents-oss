@@ -6648,8 +6648,12 @@ export class SessionManager implements ISessionManager {
 
     // Edit-and-resend: drop the replaced message (and everything after it) and rewind the SDK
     // conversation first; the new content then goes through the ordinary paths below.
+    // The replace is consumed here, once: the options travel on into the queue, the auth retry and
+    // the steer check, and a replay still carrying it would try to replace a message already gone.
     if (options?.replaceMessageId) {
       await this.applyReplaceMessage(managed, options.replaceMessageId)
+      const { replaceMessageId: _consumed, ...rest } = options
+      options = rest
     }
 
     // If currently processing, behavior depends on the connection's

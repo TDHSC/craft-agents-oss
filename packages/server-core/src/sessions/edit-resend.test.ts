@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import * as backendFactory from '../../../shared/src/agent/backend/factory.ts'
 import { SessionManager, createManagedSession, removeTurnAnchors } from './SessionManager.ts'
 
 // Edit-and-resend (`SendMessageOptions.replaceMessageId`): drop the replaced message and everything
@@ -25,6 +26,7 @@ describe('applyReplaceMessage', () => {
   })
 
   afterEach(() => {
+    mock.restore()
     rmSync(tmpRoot, { recursive: true, force: true })
   })
 
@@ -189,6 +191,30 @@ describe('applyReplaceMessage', () => {
     expect(managed.messageQueue.map(q => q.messageId)).toEqual(['q1'])
     expect(managed.messages.map(m => m.id)).toContain('q1')
     expect(managed.messages.map(m => m.id)).not.toContain('q2')
+  })
+
+  it('consumes replaceMessageId once: the queued replacement replays without it', async () => {
+    spyOn(backendFactory, 'resolveSessionConnection').mockReturnValue({ providerType: 'anthropic', midStreamBehavior: 'queue' } as any)
+    const managed = buildSession()
+    managed.isProcessing = true
+    managed.messages.push({ id: 'q1', role: 'user', content: 'q1', timestamp: 9, isQueued: true } as never)
+    managed.messageQueue = [{ message: 'q1', messageId: 'q1' } as never]
+    managed.agent = { ...fakeAgent(), redirect: () => false } as never
+
+    await sm.sendMessage('s1', 'q1 edited', undefined, undefined, { replaceMessageId: 'q1', optimisticMessageId: 'msg-new' })
+
+    expect(managed.messageQueue).toHaveLength(1)
+    const [entry] = managed.messageQueue
+    expect(entry!.message).toBe('q1 edited')
+    expect(entry!.options).toEqual({ optimisticMessageId: 'msg-new' })
+    expect(managed.messages.map(m => m.id)).toEqual(['u1', 'a1', 'u2', 'a2', 'u3', 'msg-new'])
+
+    // Replaying the queued entry must not try to replace 'q1' a second time.
+    const replay = mock(async (..._args: unknown[]) => {})
+    ;(sm as any).sendMessage = replay
+    ;(sm as any).processNextQueuedMessage('s1')
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(replay.mock.calls[0]?.[4]).toEqual({ optimisticMessageId: 'msg-new' })
   })
 
   it('rejects unknown, non-user and hidden targets', async () => {
