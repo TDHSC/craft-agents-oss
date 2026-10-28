@@ -106,6 +106,7 @@ import {
 } from './system-prompt-override.ts';
 import { readContextUsage, deferContextUsage } from './context-usage.ts';
 import { waitForCompaction, MANUAL_COMPACT_WAIT_MS, PROMPT_COMPACT_WAIT_MS } from './compaction-wait.ts';
+import { firstUserEntryId } from './rewind-target.ts';
 import type { PiCompactResult, PiContextUsagePayload, PiLargeResultGateRequest, PiLargeResultGateResponse } from '../../shared/src/agent/backend/pi/protocol.ts';
 import { createLargeResultGateClient } from './large-result-gate.ts';
 import { adaptCredentialForPiSdk, type PiCredential } from './adapt-credential.ts';
@@ -1604,7 +1605,7 @@ async function handleEnsureSessionReady(msg: Extract<InboundMessage, { type: 'en
  * Goes through `navigateTree` (not a bare `sessionManager.branch()`): only it refreshes the
  * AgentSession's in-memory context, so the discarded turns really leave the next request.
  * `anchorId` is the entry id recorded in `pi_turn_anchor` for the last KEPT assistant message;
- * `null` rewinds before the first message (navigating to the root user entry resets the leaf).
+ * `null` rewinds before the first user message of the active branch.
  */
 async function handleRewindToTurn(msg: Extract<InboundMessage, { type: 'rewind_to_turn' }>): Promise<void> {
   try {
@@ -1616,12 +1617,7 @@ async function handleRewindToTurn(msg: Extract<InboundMessage, { type: 'rewind_t
     if (targetId && !session.sessionManager.getEntry(targetId)) {
       throw new Error(`Rewind anchor not found: ${targetId}`);
     }
-    if (!targetId) {
-      const root = session.sessionManager
-        .getEntries()
-        .find((e) => e.type === 'message' && e.parentId === null && e.message.role === 'user');
-      targetId = root?.id ?? null;
-    }
+    if (!targetId) targetId = firstUserEntryId(session.sessionManager.getBranch());
     if (targetId) await session.navigateTree(targetId, { summarize: false });
 
     // Drop speculative prefetches tied to the discarded turns.
