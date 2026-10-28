@@ -8,9 +8,11 @@ import {
   CRAFT_PI_EPHEMERAL_QUERY_DEADLINE_MS,
   CRAFT_PI_EPHEMERAL_RETRY_SETTINGS,
   CRAFT_PI_RETRY_SETTINGS,
+  assumedCustomEndpointContextWindow,
   compactionReserveFor,
   createCraftSettingsManager,
 } from './session-settings.ts';
+import { DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW } from './custom-endpoint-models.ts';
 
 describe('createCraftSettingsManager', () => {
   it('batches steering without changing follow-up defaults', () => {
@@ -154,6 +156,26 @@ describe('autoCompactWindow ("Compact context at")', () => {
     for (const bad of [0, -1, 1.5, Number.NaN, '400000' as unknown as number]) {
       expect(compactionReserveFor(1_000_000, 16_384, bad)).toBe(16_384);
       expect(compactionReserveFor(bad, 16_384, 400_000)).toBe(16_384);
+    }
+  });
+});
+
+// A custom endpoint model without a declared window used to be registered at a
+// fixed 131K, which capped any larger "Compact context at" at ~115K.
+describe('assumedCustomEndpointContextWindow', () => {
+  const sdkReserve = SettingsManager.inMemory().getCompactionSettings().reserveTokens;
+
+  it('makes compaction trigger exactly at the configured size', () => {
+    const contextWindow = assumedCustomEndpointContextWindow(256_000);
+    expect(contextWindow).toBe(256_000 + sdkReserve);
+    const model = { provider: 'custom-endpoint', id: 'gemini', contextWindow };
+    const { reserveTokens } = createCraftSettingsManager('main', { autoCompactWindow: 256_000 }).getCompactionSettings(model);
+    expect(contextWindow - reserveTokens).toBe(256_000);
+  });
+
+  it('keeps the default guess when unset, invalid or smaller than it', () => {
+    for (const autoCompactWindow of [undefined, 0, -1, 1.5, Number.NaN, 100_000]) {
+      expect(assumedCustomEndpointContextWindow(autoCompactWindow)).toBe(DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW);
     }
   });
 });

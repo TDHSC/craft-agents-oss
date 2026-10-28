@@ -10,6 +10,13 @@ export type CustomEndpointApi = 'openai-completions' | 'anthropic-messages'
  */
 export const DEFAULT_CUSTOM_ENDPOINT_MAX_TOKENS = 8_192
 
+/**
+ * Context window assumed for a custom endpoint model that declares none and
+ * when no "Compact context at" is set (see `assumedCustomEndpointContextWindow`
+ * in `session-settings.ts`).
+ */
+export const DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW = 131_072
+
 /** Connection-level custom endpoint config (`LlmConnection.customEndpoint`) as sent by the main process. */
 export interface CustomEndpointConfig {
   api: CustomEndpointApi
@@ -20,6 +27,8 @@ export interface CustomEndpointConfig {
 export interface CustomEndpointModelDefaults {
   supportsImages?: boolean
   maxTokens?: number
+  /** Window for models without a per-model `contextWindow`. */
+  contextWindow?: number
 }
 
 export interface CustomEndpointModelOverrides {
@@ -75,8 +84,10 @@ function resolveMaxTokens(configured: number | undefined): number {
 /**
  * Build a synthetic model definition for a custom endpoint.
  * Uses reasonable defaults for context window and max tokens since we can't
- * query the endpoint for its actual capabilities. Image support must be
- * explicitly enabled either at the connection level or per-model.
+ * query the endpoint for its actual capabilities. A per-model `contextWindow`
+ * wins over the connection-level default the host derives from "Compact context
+ * at". Image support must be explicitly enabled either at the connection level
+ * or per-model.
  *
  * `maxTokens` is the model's output cap. Pi also bounds compaction summaries by
  * it (`min(0.8 × reserveTokens, model.maxTokens)`), so the connection-level
@@ -103,7 +114,7 @@ export function buildCustomEndpointModelDef(
     reasoning: false,
     input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: overrides?.contextWindow ?? 131_072,
+    contextWindow: overrides?.contextWindow ?? defaults?.contextWindow ?? DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW,
     maxTokens: resolveMaxTokens(defaults?.maxTokens),
     ...(api === 'openai-completions' ? { compat: { supportsStore: false } } : {}),
   }

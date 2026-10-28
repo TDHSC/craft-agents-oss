@@ -69,6 +69,7 @@ import { pickProviderAppropriateMiniModel } from './pick-mini-model.ts';
 import { queryMiniModel } from './mini-model-query.ts';
 import {
   CRAFT_PI_EPHEMERAL_QUERY_DEADLINE_MS,
+  assumedCustomEndpointContextWindow,
   createCraftSettingsManager,
 } from './session-settings.ts';
 import {
@@ -521,6 +522,7 @@ function registerCustomEndpointModels(
       {
         supportsImages: initConfig?.customEndpoint?.supportsImages === true,
         maxTokens: initConfig?.customEndpoint?.maxTokens,
+        contextWindow: assumedCustomEndpointContextWindow(initConfig?.autoCompactWindow),
       },
       customModelOverrides.get(id),
       api,

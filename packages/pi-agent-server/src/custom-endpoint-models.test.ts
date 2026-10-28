@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW,
   DEFAULT_CUSTOM_ENDPOINT_MAX_TOKENS,
   buildCustomEndpointModelDef,
   normalizeCustomEndpointModelEntry,
@@ -65,6 +66,16 @@ describe('buildCustomEndpointModelDef', () => {
     const model = buildCustomEndpointModelDef('vision-model', undefined, { supportsImages: true, contextWindow: 262_144 })
     expect(model.input).toEqual(['text', 'image'])
     expect(model.contextWindow).toBe(262_144)
+  })
+
+  it('uses the connection-level context window for models that declare none', () => {
+    expect(buildCustomEndpointModelDef('my-model').contextWindow).toBe(DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW)
+    expect(buildCustomEndpointModelDef('my-model', { contextWindow: 272_384 }).contextWindow).toBe(272_384)
+  })
+
+  it('keeps a per-model context window over the connection-level one', () => {
+    const model = buildCustomEndpointModelDef('small-model', { contextWindow: 272_384 }, { contextWindow: 32_768 })
+    expect(model.contextWindow).toBe(32_768)
   })
 
   // Regression: craft-agents-oss#1100 — Pi caps compaction summaries at model.maxTokens,

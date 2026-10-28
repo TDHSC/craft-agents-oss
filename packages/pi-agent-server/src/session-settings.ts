@@ -22,6 +22,7 @@
  */
 import { SettingsManager } from '@earendil-works/pi-coding-agent';
 import { LLM_QUERY_TIMEOUT_MS } from '../../shared/src/agent/llm-tool.ts';
+import { DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW } from './custom-endpoint-models.ts';
 
 type PiSettings = NonNullable<Parameters<typeof SettingsManager.inMemory>[0]>;
 
@@ -131,6 +132,20 @@ export function compactionReserveFor(
 ): number {
   if (!isPositiveInt(contextWindow) || !isPositiveInt(autoCompactWindow)) return baseReserve;
   return Math.max(baseReserve, contextWindow - autoCompactWindow);
+}
+
+/**
+ * Window to register for custom endpoint models that declare none. The endpoint
+ * can't be asked, and `compactionReserveFor` never lets the threshold pass the
+ * window, so the fixed 131K guess capped a larger "Compact context at" at ~115K.
+ * The setting is better information than the guess: assume the model holds the
+ * configured size plus Pi's reserve, so compaction triggers exactly there.
+ * A per-model `contextWindow` is the real limit and keeps capping the setting.
+ */
+export function assumedCustomEndpointContextWindow(autoCompactWindow: number | undefined): number {
+  if (!isPositiveInt(autoCompactWindow)) return DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW;
+  const { reserveTokens } = createCraftSettingsManager('main').getCompactionSettings();
+  return Math.max(DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW, autoCompactWindow + reserveTokens);
 }
 
 export interface CraftSettingsManagerOptions {
