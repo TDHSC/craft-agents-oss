@@ -22,6 +22,7 @@ import { FileTypeIcon, getFileTypeLabel } from './attachment-helpers'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../tooltip'
 import { TurnIconButton } from './turn/TurnIconButton'
 import { HOVER_REVEAL } from './turn/turn-classes'
+import { shouldStartEditFromClick } from './edit-click'
 import { useTranslation } from 'react-i18next'
 
 // Fallback text icons for badges without iconDataUrl
@@ -327,6 +328,11 @@ export interface UserMessageBubbleProps {
   isQueued?: boolean
   /** Compact mode - reduces padding for popover embedding */
   compactMode?: boolean
+  /**
+   * Click-to-edit: when set, a plain click on the bubble (not a text selection, link, badge or
+   * attachment) calls this. The bubble looks the same; only the pointer changes.
+   */
+  onStartEdit?: () => void
 }
 
 /** Minimum visible duration of the "Queued" chip. Both backends ack
@@ -344,6 +350,7 @@ export function UserMessageBubble({
   badges,
   isQueued,
   compactMode,
+  onStartEdit,
 }: UserMessageBubbleProps) {
   const { t } = useTranslation()
   const { copied, copy } = useCopyToClipboard()
@@ -513,7 +520,20 @@ export function UserMessageBubble({
             />
           </div>
         )}
-        <div className="min-w-0 select-text break-words rounded-xl bg-user-message-bubble px-3.5 py-2.25 text-copy text-foreground [&_p]:m-0">
+        <div
+          className={cn(
+            "min-w-0 select-text break-words rounded-xl bg-user-message-bubble px-3.5 py-2.25 text-copy text-foreground [&_p]:m-0",
+            onStartEdit && "cursor-pointer",
+          )}
+          onClick={onStartEdit ? (event) => {
+            const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString() ?? '' : ''
+            if (shouldStartEditFromClick(event.target as Element | null, selectedText)) onStartEdit()
+          } : undefined}
+          onKeyDown={onStartEdit ? (event) => {
+            if (event.key === 'Enter' && event.target === event.currentTarget) onStartEdit()
+          } : undefined}
+          tabIndex={onStartEdit ? 0 : undefined}
+        >
           {showQueued && (
             <div
               className="mb-1 flex items-center gap-1.5 text-tertiary"

@@ -39,6 +39,8 @@ export interface MessageBubbleProps {
   compactMode?: boolean
   /** Callback to resend the user message that preceded an error */
   onRetry?: () => void
+  /** Click-to-edit for user messages; omit when the message cannot be edited */
+  onStartEdit?: (message: Message) => void
 }
 
 /** Info-level notices: icon shape + role color per level (status never by color alone). */
@@ -58,6 +60,7 @@ export function MessageBubble({
   onPopOut,
   compactMode,
   onRetry,
+  onStartEdit,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
 
@@ -73,6 +76,7 @@ export function MessageBubble({
         onUrlClick={onOpenUrl}
         onFileClick={onOpenFile}
         compactMode={compactMode}
+        onStartEdit={onStartEdit ? () => onStartEdit(message) : undefined}
       />
     )
   }
@@ -199,6 +203,9 @@ export const MemoizedMessageBubble = React.memo(MessageBubble, (prev, next) => {
     prev.message.content === next.message.content &&
     prev.message.role === next.message.role &&
     prev.sessionId === next.sessionId &&
-    prev.compactMode === next.compactMode
+    prev.compactMode === next.compactMode &&
+    // Editability flips (e.g. while the message is still pending); the callback is a stable
+    // function of the message, so only its presence matters.
+    !!prev.onStartEdit === !!next.onStartEdit
   )
 })

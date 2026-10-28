@@ -522,6 +522,11 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
               onSendMessage(session.id, message, attachments, skillSlugs)
             }
           }}
+          onEditMessage={(messageId, message, attachments, skillSlugs) => {
+            if (session) {
+              onSendMessage(session.id, message, attachments, skillSlugs, undefined, { replaceMessageId: messageId })
+            }
+          }}
           onOpenFile={handleOpenFile}
           onOpenUrl={handleOpenUrl}
           currentModel={effectiveModel}

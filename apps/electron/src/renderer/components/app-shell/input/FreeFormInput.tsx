@@ -239,6 +239,12 @@ export interface FreeFormInputProps {
   isCollapsedInCompact?: boolean
   /** Callback fired when the user clicks or hovers the collapsed-input strip. */
   onRequestExpand?: () => void
+  /**
+   * Edit-and-resend composer embedded in the transcript (InlinePromptEditor). It must not answer
+   * the panel-wide input events (insert text, paste files, submit) that belong to the session's
+   * bottom composer, so it never counts as the focused panel for them.
+   */
+  inlineEditor?: boolean
 }
 
 /**
@@ -305,6 +311,7 @@ export function FreeFormInput({
   connectionUnavailable = false,
   isCollapsedInCompact = false,
   onRequestExpand,
+  inlineEditor = false,
 }: FreeFormInputProps) {
   const { t } = useTranslation()
 
@@ -434,7 +441,7 @@ export function FreeFormInput({
 
   // Read panel focus state from context (for multi-panel unfocused styling)
   const appShellContext = useOptionalAppShellContext()
-  const isFocusedPanel = appShellContext?.isFocusedPanel ?? true
+  const isFocusedPanel = inlineEditor ? false : (appShellContext?.isFocusedPanel ?? true)
 
   // In compact mode, suppress desktop-keyboard guidance that is noisy or misleading on
   // narrow/mobile-like layouts: the defaults drop their keyboard tips above, and caller-provided

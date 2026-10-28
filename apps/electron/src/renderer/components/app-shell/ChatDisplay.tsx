@@ -66,6 +66,8 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { MemoizedMessageBubble } from "./chat-display/MessageBubble"
+import { InlinePromptEditor } from "./chat-display/InlinePromptEditor"
+import { isMessageEditable } from "./chat-display/inline-edit-guards"
 import { ProcessingIndicator } from "./chat-display/ProcessingIndicator"
 import { ScrollOnMount } from "./chat-display/ScrollOnMount"
 import { TurnFrame } from "./chat-display/TurnFrame"
@@ -144,6 +146,11 @@ function getTurnKey(turn: Turn): string {
 interface ChatDisplayProps {
   session: Session | null
   onSendMessage: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
+  /**
+   * Edit-and-resend: replace the sent user message `messageId` with this content. When omitted,
+   * user bubbles are not editable.
+   */
+  onEditMessage?: (messageId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
   // Model selection
@@ -288,6 +295,7 @@ export interface ChatDisplayHandle {
 export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>(function ChatDisplay({
   session,
   onSendMessage,
+  onEditMessage,
   onOpenFile,
   onOpenUrl,
   currentModel,
@@ -1164,6 +1172,30 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     })
   }
 
+  // === Edit-and-resend ===
+  // Editing is local UI state only: opening the editor never touches a running turn, and leaving it
+  // (Esc, click outside) changes nothing. The send is what replaces the message.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const canEditMessages = !!onEditMessage && !compactMode && !isInputDisabled && !disableSend && !connectionUnavailable
+
+  const handleStartEdit = useCallback((message: Message) => setEditingMessageId(message.id), [])
+  const handleCancelEdit = useCallback(() => setEditingMessageId(null), [])
+  const handleEditSubmit = useCallback((messageId: string, text: string, attachments?: FileAttachment[], skillSlugs?: string[]) => {
+    setEditingMessageId(null)
+    isStickToBottomRef.current = true
+    onEditMessage?.(messageId, text, attachments, skillSlugs)
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    })
+  }, [onEditMessage])
+
+  // The editor belongs to one message of one session; drop it when either goes away
+  // (session switch, or the message was removed by a truncation).
+  useEffect(() => { setEditingMessageId(null) }, [session?.id])
+  useEffect(() => {
+    if (editingMessageId && !session?.messages.some(m => m.id === editingMessageId)) setEditingMessageId(null)
+  }, [editingMessageId, session?.messages])
+
   const handleSaveAndSendFollowUp = useCallback((_target: {
     messageId: string
     annotationId: string
@@ -1475,6 +1507,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
                     // User turns - render with MemoizedMessageBubble
                     if (turn.type === 'user') {
+                      const isEditing = canEditMessages && turn.message.id === editingMessageId
                       return (
                         <TurnFrame
                           key={turnKey}
@@ -1484,13 +1517,37 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           isAnyMatch={isAnyMatch}
                           className={CHAT_LAYOUT.userMessagePadding}
                         >
-                          <MemoizedMessageBubble
-                            message={turn.message}
-                            onOpenFile={onOpenFile}
-                            onOpenUrl={onOpenUrl}
-                            sessionId={session?.id}
-                            compactMode={compactMode}
-                          />
+                          {isEditing ? (
+                            <InlinePromptEditor
+                              message={turn.message}
+                              onCancel={handleCancelEdit}
+                              onSubmit={handleEditSubmit}
+                              inputProps={{
+                                currentModel,
+                                onModelChange,
+                                thinkingLevel,
+                                onThinkingLevelChange,
+                                sources,
+                                enabledSourceSlugs: session?.enabledSourceSlugs ?? [],
+                                onSourcesChange,
+                                skills,
+                                workspaceId,
+                                workingDirectory,
+                                currentConnection: session?.llmConnection,
+                                onConnectionChange,
+                                disableSend: disableSend || connectionUnavailable,
+                              }}
+                            />
+                          ) : (
+                            <MemoizedMessageBubble
+                              message={turn.message}
+                              onOpenFile={onOpenFile}
+                              onOpenUrl={onOpenUrl}
+                              sessionId={session?.id}
+                              compactMode={compactMode}
+                              onStartEdit={canEditMessages && isMessageEditable(turn.message) ? handleStartEdit : undefined}
+                            />
+                          )}
                         </TurnFrame>
                       )
                     }
