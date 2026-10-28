@@ -6,7 +6,13 @@ import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { FreeFormInput, type FreeFormInputProps } from '../input/FreeFormInput'
 import { shouldCancelInlineEdit } from './inline-edit-guards'
 
-/** The composer settings the inline editor shares with the session's bottom composer. */
+/**
+ * The composer settings the inline editor shares with the session's bottom composer.
+ *
+ * `sessionId` is left out on purpose: with it, this composer would also run the session's
+ * pending-plan dispatcher and take session-targeted insert/paste/focus/submit events meant for
+ * the bottom composer.
+ */
 export type InlinePromptEditorInputProps = Pick<
   FreeFormInputProps,
   | 'currentModel'
@@ -22,7 +28,6 @@ export type InlinePromptEditorInputProps = Pick<
   | 'currentConnection'
   | 'onConnectionChange'
   | 'disableSend'
-  | 'sessionId'
 >
 
 interface InlinePromptEditorProps {

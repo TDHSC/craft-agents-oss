@@ -24,9 +24,11 @@ export function isMessageEditable(message: {
   isPending?: boolean
   content: string
   badges?: Array<{ type: string }>
+  attachments?: unknown[]
 }): boolean {
   if (message.role !== 'user' || message.hidden || message.isPending) return false
   if (message.badges?.some(b => b.type === 'context' || b.type === 'edit_request' || b.type === 'command')) return false
   if (/^\/[a-z]+(\s|$)/i.test(message.content.trim())) return false
-  return message.content.trim().length > 0
+  // Attachment-only messages count: the editor restores the files.
+  return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0
 }

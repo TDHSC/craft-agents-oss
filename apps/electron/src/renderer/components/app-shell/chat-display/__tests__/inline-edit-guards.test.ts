@@ -38,5 +38,10 @@ describe('isMessageEditable', () => {
     expect(isMessageEditable({ ...user, content: '/compact now' })).toBe(false)
     expect(isMessageEditable({ ...user, badges: [{ type: 'command' }] })).toBe(false)
     expect(isMessageEditable({ ...user, content: '   ' })).toBe(false)
+    expect(isMessageEditable({ ...user, content: '   ', attachments: [] })).toBe(false)
+  })
+
+  it('allows attachment-only messages', () => {
+    expect(isMessageEditable({ ...user, content: '', attachments: [{ name: 'shot.png' }] })).toBe(true)
   })
 })
