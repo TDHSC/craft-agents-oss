@@ -608,12 +608,16 @@ describe('Claude resumeSessionAt lineage guard', () => {
     sdkMessageUuid: string
   }
 
+  const CHAIN_UUID = '550e8400-e29b-41d4-a716-446655440000'
+
   function resolveClaudeResumeSessionAt(
     anchor: ClaudeAnchorRecord | undefined,
     branchFromSdkSessionId: string | undefined,
   ): string | undefined {
     if (!anchor || !branchFromSdkSessionId) return undefined
-    if (!anchor.sdkMessageUuid || !anchor.sdkMessageUuid.startsWith('msg_')) return undefined
+    // resumeSessionAt needs a transcript chain entry UUID (SDKAssistantMessage.uuid,
+    // RFC-4122) — NOT the Messages-API id (msg_…), which never matches a chain entry.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(anchor.sdkMessageUuid)) return undefined
     if (anchor.sdkSessionId !== branchFromSdkSessionId) return undefined
     return anchor.sdkMessageUuid
   }
@@ -621,9 +625,9 @@ describe('Claude resumeSessionAt lineage guard', () => {
   it('uses resumeSessionAt when anchor lineage matches parent session', () => {
     const anchor: ClaudeAnchorRecord = {
       sdkSessionId: 'parent-sdk-session',
-      sdkMessageUuid: 'msg_01ValidAnchor',
+      sdkMessageUuid: CHAIN_UUID,
     }
-    expect(resolveClaudeResumeSessionAt(anchor, 'parent-sdk-session')).toBe('msg_01ValidAnchor')
+    expect(resolveClaudeResumeSessionAt(anchor, 'parent-sdk-session')).toBe(CHAIN_UUID)
   })
 
   it('omits resumeSessionAt when sidecar anchor is missing', () => {
@@ -633,7 +637,15 @@ describe('Claude resumeSessionAt lineage guard', () => {
   it('omits resumeSessionAt when anchor session lineage mismatches parent', () => {
     const anchor: ClaudeAnchorRecord = {
       sdkSessionId: 'different-session',
-      sdkMessageUuid: 'msg_01ValidAnchor',
+      sdkMessageUuid: CHAIN_UUID,
+    }
+    expect(resolveClaudeResumeSessionAt(anchor, 'parent-sdk-session')).toBeUndefined()
+  })
+
+  it('omits resumeSessionAt when anchor is a legacy Messages-API id (msg_…), not a chain UUID', () => {
+    const anchor: ClaudeAnchorRecord = {
+      sdkSessionId: 'parent-sdk-session',
+      sdkMessageUuid: 'msg_01LegacyAnchor',
     }
     expect(resolveClaudeResumeSessionAt(anchor, 'parent-sdk-session')).toBeUndefined()
   })
@@ -641,7 +653,7 @@ describe('Claude resumeSessionAt lineage guard', () => {
   it('omits resumeSessionAt when anchor uuid is malformed', () => {
     const anchor: ClaudeAnchorRecord = {
       sdkSessionId: 'parent-sdk-session',
-      sdkMessageUuid: 'not-a-claude-msg-id',
+      sdkMessageUuid: 'not-a-chain-uuid',
     }
     expect(resolveClaudeResumeSessionAt(anchor, 'parent-sdk-session')).toBeUndefined()
   })

@@ -320,7 +320,12 @@ function getClaudeTurnAnchorsPath(sessionPath: string): string {
 }
 
 function isClaudeMessageUuid(turnId: string): boolean {
-  return /^msg_[A-Za-z0-9]+$/.test(turnId)
+  // The SDK's `resumeSessionAt` expects a transcript chain entry UUID
+  // (`SDKAssistantMessage.uuid`, RFC-4122) — NOT the Messages-API id (`msg_…`).
+  // Legacy sidecars written before the chain-UUID fix store `msg_…` ids, which
+  // never match a chain entry; treating them as valid silently broke branch
+  // cutoffs. They now fail this check and fall back to the full-history fork.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(turnId)
 }
 
 async function loadClaudeTurnAnchors(sessionPath: string): Promise<ClaudeTurnAnchorsIndex> {
@@ -961,6 +966,13 @@ interface ManagedSession {
    * Capped at PI_SDK_MESSAGE_ID_CACHE_LIMIT to bound memory in long sessions.
    */
   piSdkMessageToCraftMessage?: Map<string, string>
+  /**
+   * Runtime-only: Claude msg-id (Messages-API `message.id` of the turn's last
+   * final text) → Craft assistant message id. Populated on final `text_complete`,
+   * read when the `claude_turn_anchor` event arrives at result(success) time.
+   * Same cap as the Pi cache.
+   */
+  claudeTurnIdToCraftMessage?: Map<string, string>
   // Source-activation auto-retry (craft-agents-oss#804). When a source activates
   // mid-turn, we re-send the original message with a "[<slug> activated]" suffix
   // after a short delay. The pending slot lets `sendMessage` dedup a duplicate
@@ -8769,13 +8781,24 @@ export class SessionManager implements ISessionManager {
 
           const sessionPath = getSessionStoragePath(managed.workspace.rootPath, sessionId)
 
-          // Claude branch-cutoff support: persist message UUID + SDK session lineage in sidecar.
-          // Used to guard resumeSessionAt so we only send anchors valid for the parent SDK session.
-          if (event.turnId && managed.sdkSessionId && isClaudeMessageUuid(event.turnId)) {
-            try {
-              await saveClaudeTurnAnchor(sessionPath, assistantMessage.id, managed.sdkSessionId, event.turnId)
-            } catch (error) {
-              sessionLog.warn(`Failed to persist Claude turn anchor for session ${sessionId}:`, error)
+          // Claude chain-rewind anchor support: remember the msg-id → Craft
+          // message mapping. The actual chain UUID arrives as a separate
+          // `claude_turn_anchor` event at result(success) time — only then is the
+          // turn's LAST top-level chain entry known (a tool-using turn can end on
+          // a trailing user/tool_result entry, and multi-segment turns produce
+          // several assistant messages before the final one).
+          if (event.turnId) {
+            let cache = managed.claudeTurnIdToCraftMessage
+            if (!cache) {
+              cache = new Map()
+              managed.claudeTurnIdToCraftMessage = cache
+            }
+            cache.set(event.turnId, assistantMessage.id)
+            // Prune oldest entries when over the cap. Map preserves insertion
+            // order, so the first key is the oldest.
+            if (cache.size > PI_SDK_MESSAGE_ID_CACHE_LIMIT) {
+              const oldest = cache.keys().next().value
+              if (oldest !== undefined) cache.delete(oldest)
             }
           }
 
@@ -8823,6 +8846,34 @@ export class SessionManager implements ISessionManager {
           await savePiTurnAnchor(sessionPath, craftMessageId, event.sdkTurnAnchor)
         } catch (error) {
           sessionLog.warn(`Failed to persist Pi turn anchor for session ${sessionId}:`, error)
+        }
+        break
+      }
+
+      case 'claude_turn_anchor': {
+        // Arrives at result(success) time, after every chain entry of the turn has
+        // been seen. `sdkMessageId` is the msg-id of the turn's last final text —
+        // look up the Craft assistant message it belongs to and persist the SDK
+        // chain UUID + session lineage for rewind/branch cutoffs.
+        const claudeCache = managed.claudeTurnIdToCraftMessage
+        const claudeCraftMessageId = claudeCache?.get(event.sdkMessageId)
+        if (!claudeCraftMessageId) {
+          sessionLog.debug(`claude_turn_anchor for unknown sdkMessageId=${event.sdkMessageId}; ignoring`)
+          break
+        }
+        if (!managed.sdkSessionId) {
+          sessionLog.debug(`claude_turn_anchor without sdkSessionId for session ${sessionId}; ignoring`)
+          break
+        }
+        if (!isClaudeMessageUuid(event.sdkTurnAnchor)) {
+          sessionLog.warn(`claude_turn_anchor with non-UUID anchor ${event.sdkTurnAnchor}; ignoring`)
+          break
+        }
+        const claudeSessionPath = getSessionStoragePath(managed.workspace.rootPath, sessionId)
+        try {
+          await saveClaudeTurnAnchor(claudeSessionPath, claudeCraftMessageId, managed.sdkSessionId, event.sdkTurnAnchor)
+        } catch (error) {
+          sessionLog.warn(`Failed to persist Claude turn anchor for session ${sessionId}:`, error)
         }
         break
       }
