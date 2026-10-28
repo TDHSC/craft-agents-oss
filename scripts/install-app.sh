@@ -2,7 +2,7 @@
 
 set -e
 
-VERSIONS_URL="https://thecraftagents.com/electron"
+VERSIONS_URL="https://github.com/TDHSC/craft-agents-oss/releases/latest/download"
 DOWNLOAD_DIR="$HOME/.craft-agent/downloads"
 
 # Colors for output
@@ -79,22 +79,24 @@ download_file() {
 get_sha512_from_yaml() {
     local yaml="$1"
     local target_arch="$2"
+    local target_ext="${3:-zip}"
+    local expected_url="Craft-Agents-${target_arch}.${target_ext}"
 
-    # Find the line with the target arch and extract sha512 from preceding lines
-    local in_target_block=false
+    local url=""
     local sha512=""
 
     while IFS= read -r line; do
-        # Check if we're entering a new file entry
-        if [[ $line =~ ^[[:space:]]*-[[:space:]]*url: ]]; then
-            in_target_block=false
+        if [[ $line =~ ^[[:space:]]*-[[:space:]]*url:[[:space:]]*(.+) ]]; then
+            url="${BASH_REMATCH[1]}"
             sha512=""
         fi
-        # Extract sha512
         if [[ $line =~ sha512:[[:space:]]*(.+) ]]; then
             sha512="${BASH_REMATCH[1]}"
+            if [ "$url" = "$expected_url" ] && [ -n "$sha512" ]; then
+                echo "$sha512"
+                return 0
+            fi
         fi
-        # Check arch
         if [[ $line =~ arch:[[:space:]]*(.+) ]]; then
             local arch="${BASH_REMATCH[1]}"
             if [ "$arch" = "$target_arch" ] && [ -n "$sha512" ]; then
@@ -111,15 +113,19 @@ get_sha512_from_yaml() {
 get_filename_from_yaml() {
     local yaml="$1"
     local target_arch="$2"
+    local target_ext="${3:-zip}"
+    local expected_url="Craft-Agents-${target_arch}.${target_ext}"
 
     local url=""
 
     while IFS= read -r line; do
-        # Check if we're entering a new file entry
         if [[ $line =~ ^[[:space:]]*-[[:space:]]*url:[[:space:]]*(.+) ]]; then
             url="${BASH_REMATCH[1]}"
+            if [ "$url" = "$expected_url" ]; then
+                echo "$url"
+                return 0
+            fi
         fi
-        # Check arch
         if [[ $line =~ arch:[[:space:]]*(.+) ]]; then
             local arch="${BASH_REMATCH[1]}"
             if [ "$arch" = "$target_arch" ] && [ -n "$url" ]; then
@@ -166,7 +172,7 @@ mkdir -p "$INSTALL_DIR"
 
 # Fetch YAML manifest directly from /electron/latest/ (no version endpoint needed)
 info "Fetching release info..."
-manifest_yaml=$(download_file "$VERSIONS_URL/latest/$yml_file")
+manifest_yaml=$(download_file "$VERSIONS_URL/$yml_file")
 
 if [ -z "$manifest_yaml" ]; then
     error "Failed to fetch release info from $yml_file"
@@ -187,11 +193,11 @@ info "Latest version: $version"
 
 # Extract sha512 and filename for our architecture
 if [ "$HAS_YQ" = true ]; then
-    checksum=$(echo "$manifest_yaml" | yq -r ".files[] | select(.arch == \"$arch\") | .sha512")
-    filename=$(echo "$manifest_yaml" | yq -r ".files[] | select(.arch == \"$arch\") | .url")
+    checksum=$(echo "$manifest_yaml" | yq -r ".files[] | select(.arch == \"$arch\" or .url == \"Craft-Agents-${arch}.${ext}\") | .sha512" | head -n 1)
+    filename=$(echo "$manifest_yaml" | yq -r ".files[] | select(.arch == \"$arch\" or .url == \"Craft-Agents-${arch}.${ext}\") | .url" | head -n 1)
 else
-    checksum=$(get_sha512_from_yaml "$manifest_yaml" "$arch")
-    filename=$(get_filename_from_yaml "$manifest_yaml" "$arch")
+    checksum=$(get_sha512_from_yaml "$manifest_yaml" "$arch" "$ext")
+    filename=$(get_filename_from_yaml "$manifest_yaml" "$arch" "$ext")
 fi
 
 # Validate checksum format (SHA512 base64 = 88 characters)
@@ -207,7 +213,7 @@ fi
 info "Expected sha512: ${checksum:0:20}..."
 
 # Download installer
-installer_url="$VERSIONS_URL/latest/$filename"
+installer_url="$VERSIONS_URL/$filename"
 installer_path="$DOWNLOAD_DIR/$filename"
 
 info "Downloading $filename..."
@@ -351,7 +357,7 @@ ELECTRON_CACHE_ALT="$HOME/.cache/@craft-agent"
 # Verify AppImage exists
 if [ ! -f "$APPIMAGE_PATH" ]; then
     echo "Error: Craft Agent not found at $APPIMAGE_PATH"
-    echo "Reinstall: curl -fsSL https://thecraftagents.com/install-app.sh | bash"
+    echo "Reinstall: curl -fsSL https://raw.githubusercontent.com/TDHSC/craft-agents-oss/main/scripts/install-app.sh | bash"
     exit 1
 fi
 

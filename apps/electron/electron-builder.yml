@@ -70,10 +70,11 @@ files:
 extraMetadata:
   main: dist/main.cjs
 
-# Auto-update: electron-updater fetches from this URL for update manifests (.yml files)
+# Auto-update: electron-updater fetches update manifests (.yml) and binaries from GitHub Releases
 publish:
-  provider: generic
-  url: https://thecraftagents.com/electron/latest
+  provider: github
+  owner: TDHSC
+  repo: craft-agents-oss
 
 # Disable ASAR to avoid decompression overhead and click delays
 asar: false
@@ -90,14 +91,9 @@ mac:
     # and never appears in the privacy pane (craft-agents-oss#938).
     NSLocalNetworkUsageDescription: "Craft Agents uses your local network to reach LAN addresses and devices you ask an agent to access, such as local servers or APIs."
   target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
-    - target: zip
-      arch:
-        - arm64
-        - x64
+    - dmg
+    - zip
+  sign: scripts/macSign.cjs
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

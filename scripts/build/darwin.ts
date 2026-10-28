@@ -41,8 +41,8 @@ export async function packageDarwin(config: BuildConfig): Promise<string> {
   // Set up environment for electron-builder
   process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'true';
 
-  // Build electron-builder arguments
-  const builderArgs = ['--mac', `--${arch}`];
+  // Build electron-builder arguments (--publish never writes latest-mac.yml locally without racing gh release)
+  const builderArgs = ['--mac', `--${arch}`, '--publish', 'never'];
 
   // Add code signing if identity is available
   if (process.env.APPLE_SIGNING_IDENTITY) {

@@ -1,10 +1,10 @@
 # Craft Agents Windows Installer
-# Usage: irm https://thecraftagents.com/install-app.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/TDHSC/craft-agents-oss/main/scripts/install-app.ps1 | iex
 
 & {
 $ErrorActionPreference = "Stop"
 
-$VERSIONS_URL = "https://thecraftagents.com/electron"
+$VERSIONS_URL = "https://github.com/TDHSC/craft-agents-oss/releases/latest/download"
 $DOWNLOAD_DIR = "$env:TEMP\craft-agent-install"
 $APP_NAME = "Craft Agents"
 
@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path $DOWNLOAD_DIR | Out-Null
 Write-Info "Fetching release info..."
 $yamlPath = Join-Path $DOWNLOAD_DIR "latest.yml"
 try {
-    Invoke-WebRequest -Uri "$VERSIONS_URL/latest/latest.yml" -OutFile $yamlPath -UseBasicParsing
+    Invoke-WebRequest -Uri "$VERSIONS_URL/latest.yml" -OutFile $yamlPath -UseBasicParsing
 } catch {
     Write-Err "Failed to fetch release info: $_"
 }
@@ -111,7 +111,7 @@ if (-not $filename) {
     $filename = "Craft-Agents-$arch.exe"
 }
 
-$installerUrl = "$VERSIONS_URL/latest/$filename"
+$installerUrl = "$VERSIONS_URL/$filename"
 
 Write-Info "Expected sha512: $($checksum.Substring(0, 20))..."
 
