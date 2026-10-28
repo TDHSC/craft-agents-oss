@@ -230,6 +230,24 @@ describe('applyReplaceMessage', () => {
   })
 })
 
+describe('userMessageId', () => {
+  const sm = new SessionManager()
+  const managed = { messages: [{ id: 'msg-1-used' }] } as never
+  const id = (optimisticMessageId?: string) => (sm as any).userMessageId(managed, { optimisticMessageId })
+
+  it('adopts a well-formed unused optimistic id so client and server agree on the message id', () => {
+    expect(id('msg-1730000000000-4')).toBe('msg-1730000000000-4')
+  })
+
+  it('generates a fresh id for missing, malformed or already-used optimistic ids', () => {
+    for (const bad of [undefined, '', 'not-an-id', 'msg-has space', 'msg-1-used']) {
+      const generated = id(bad)
+      expect(generated).not.toBe(bad)
+      expect(generated).toMatch(/^msg-\d+-[a-z0-9]+$/)
+    }
+  })
+})
+
 describe('removeTurnAnchors', () => {
   it('drops the given messages from both anchor sidecars and keeps the rest', async () => {
     const root = mkdtempSync(join(tmpdir(), 'sm-anchors-'))

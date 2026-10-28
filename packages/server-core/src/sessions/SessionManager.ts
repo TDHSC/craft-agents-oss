@@ -6677,7 +6677,7 @@ export class SessionManager implements ISessionManager {
 
       // Create user message for UI
       const userMessage: Message = {
-        id: generateMessageId(),
+        id: this.userMessageId(managed, options),
         role: 'user',
         content: message,
         timestamp: this.monotonic(),
@@ -6757,7 +6757,7 @@ export class SessionManager implements ISessionManager {
     } else {
       // Create new message
       userMessage = {
-        id: generateMessageId(),
+        id: this.userMessageId(managed, options),
         role: 'user',
         content: message,
         timestamp: this.monotonic(),
@@ -7281,6 +7281,19 @@ export class SessionManager implements ISessionManager {
         this.onProcessingStopped(sessionId, 'interrupted')
       }
     }
+  }
+
+  /**
+   * Id for a new user message. A client's optimistic id is adopted when it is well-formed and
+   * unused, so the id the client already shows is the stored one: edit-and-resend names the message
+   * to replace by that id, and the renderer never swaps ids (it would remount the bubble).
+   */
+  private userMessageId(managed: ManagedSession, options?: SendMessageOptions): string {
+    const optimistic = options?.optimisticMessageId
+    if (optimistic && /^msg-[A-Za-z0-9-]{1,64}$/.test(optimistic) && !managed.messages.some(m => m.id === optimistic)) {
+      return optimistic
+    }
+    return generateMessageId()
   }
 
   /**
