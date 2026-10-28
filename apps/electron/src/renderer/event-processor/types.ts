@@ -467,6 +467,16 @@ export interface UserMessageEvent {
 }
 
 /**
+ * Messages truncated event - edit-and-resend dropped these messages (the replaced one and
+ * everything after it, or just the replaced queued entries)
+ */
+export interface MessagesTruncatedEvent {
+  type: 'messages_truncated'
+  sessionId: string
+  removedMessageIds: string[]
+}
+
+/**
  * Message annotation update event
  */
 export interface MessageAnnotationsUpdatedEvent {
@@ -583,6 +593,7 @@ export type AgentEvent =
   | TaskActivityEvent
   | WorkflowAgentCompletedEvent
   | UserMessageEvent
+  | MessagesTruncatedEvent
   | MessageAnnotationsUpdatedEvent
   | SessionSharedEvent
   | SessionUnsharedEvent

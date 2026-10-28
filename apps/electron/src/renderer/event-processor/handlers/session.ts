@@ -29,6 +29,7 @@ import type {
   RetryEvent,
   InfoEvent,
   InterruptedEvent,
+  MessagesTruncatedEvent,
   TitleGeneratedEvent,
   TitleRegeneratingEvent,
   AsyncOperationEvent,
@@ -626,6 +627,29 @@ export function handleUserMessage(
         isProcessing: status === 'accepted' || status === 'processing',
       },
       streaming,
+    },
+    effects: [],
+  }
+}
+
+/**
+ * Handle messages_truncated - edit-and-resend removed these messages server-side.
+ *
+ * A running turn is superseded before this arrives, so its streaming buffer belongs to messages
+ * that no longer exist; dropping it keeps a late delta from resurrecting them.
+ */
+export function handleMessagesTruncated(
+  state: SessionState,
+  event: MessagesTruncatedEvent
+): ProcessResult {
+  const removed = new Set(event.removedMessageIds)
+  return {
+    state: {
+      session: {
+        ...state.session,
+        messages: state.session.messages.filter(m => !removed.has(m.id)),
+      },
+      streaming: null,
     },
     effects: [],
   }

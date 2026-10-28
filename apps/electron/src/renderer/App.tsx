@@ -1296,12 +1296,17 @@ export default function App() {
     window.electronAPI.sessionCommand(sessionId, { type: 'rename', name })
   }, [updateSessionById])
 
-  const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
+  const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[], sendOptions?: { replaceMessageId?: string }) => {
+    const replaceMessageId = sendOptions?.replaceMessageId
     try {
       // Capture pre-send processing state so we can flag mid-stream sends
       // for the queued badge (#616 follow-up — covers Pi steer path which
       // returns status 'accepted', not 'queued').
-      const sendingMidStream = store.get(sessionAtomFamily(sessionId))?.isProcessing === true
+      const preSendSession = store.get(sessionAtomFamily(sessionId))
+      // Edit-and-resend: replacing a queued message keeps the running turn going (still mid-stream);
+      // replacing a sent one stops that turn on the server, so the new message starts a fresh one.
+      const replacedMessage = replaceMessageId ? preSendSession?.messages.find(m => m.id === replaceMessageId) : undefined
+      const sendingMidStream = preSendSession?.isProcessing === true && !(replaceMessageId && !replacedMessage?.isQueued)
 
       // Step 1: Store attachments and get persistent metadata
       let storedAttachments: StoredAttachment[] | undefined
@@ -1435,21 +1440,39 @@ export default function App() {
         isQueued: sendingMidStream,
       }
 
-      // Optimistic UI update - add user message and set processing state
-      updateSessionById(sessionId, (s) => ({
-        messages: [...s.messages, userMessage],
-        isProcessing: true,
-        lastMessageAt: Date.now()
-      }))
+      // Optimistic UI update - add user message and set processing state.
+      // Edit-and-resend drops the replaced message locally in the same step, mirroring what the
+      // server's `messages_truncated` will confirm: a queued message takes the later queued ones
+      // with it, a sent one takes everything after it.
+      updateSessionById(sessionId, (s) => {
+        let base = s.messages
+        if (replaceMessageId) {
+          const idx = base.findIndex(m => m.id === replaceMessageId)
+          if (idx >= 0) {
+            base = replacedMessage?.isQueued
+              ? base.filter((m, i) => i < idx || !(m.role === 'user' && m.isQueued))
+              : base.slice(0, idx)
+          }
+        }
+        return {
+          messages: [...base, userMessage],
+          isProcessing: true,
+          lastMessageAt: Date.now()
+        }
+      })
 
       // Step 6: Send to Claude with processed attachments + stored attachments for persistence
       await window.electronAPI.sendMessage(sessionId, message, processedAttachments, storedAttachments, {
         skillSlugs,
         badges: badges.length > 0 ? badges : undefined,
         optimisticMessageId: userMessage.id,
+        ...(replaceMessageId ? { replaceMessageId } : {}),
       })
     } catch (error) {
       console.error('Failed to send message:', error)
+      // A rejected edit may have been truncated locally while the server kept the transcript:
+      // take the server's version back before reporting the failure.
+      if (replaceMessageId) await refreshSessionFromServer(sessionId)
       updateSessionById(sessionId, (s) => ({
         isProcessing: false,
         messages: [
@@ -1463,7 +1486,7 @@ export default function App() {
         ]
       }))
     }
-  }, [sessionOptions, updateSessionById, skills, sources, windowWorkspaceId])
+  }, [sessionOptions, updateSessionById, skills, sources, windowWorkspaceId, refreshSessionFromServer])
 
   /**
    * Unified handler for all session option changes.
