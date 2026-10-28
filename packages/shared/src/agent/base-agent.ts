@@ -804,8 +804,8 @@ Please continue the conversation naturally from where we left off.
       .join('\n\n');
 
     return `<branch_seed_context>
-This is a branched conversation. The context below is the parent transcript up to the selected branch point.
-Ignore and do not assume any parent messages that came after this cutoff.
+This conversation continues from an earlier point. The context below is the transcript up to the selected cutoff (a branch point, or the message the user edited and re-sent).
+Ignore and do not assume any messages that came after this cutoff.
 
 ${formattedMessages}
 </branch_seed_context>`;

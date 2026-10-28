@@ -464,6 +464,8 @@ export type SessionEvent =
   | { type: 'workflow_agent_completed'; sessionId: string; workflowId: string; agentId: string; turnId?: string }
   | { type: 'shell_killed'; sessionId: string; shellId: string }
   | { type: 'user_message'; sessionId: string; message: Message; status: 'accepted' | 'queued' | 'processing'; optimisticMessageId?: string }
+  /** Edit-and-resend dropped these messages (the replaced one and everything after it). */
+  | { type: 'messages_truncated'; sessionId: string; removedMessageIds: string[] }
   | { type: 'session_flagged'; sessionId: string }
   | { type: 'session_unflagged'; sessionId: string }
   | { type: 'session_archived'; sessionId: string }
@@ -500,6 +502,13 @@ export interface SendMessageOptions {
    * e.g. the tasks:generate authoring turn.
    */
   thinkingLevel?: ThinkingLevel
+  /**
+   * Edit-and-resend: id of the sent user message this send replaces. The server drops that message
+   * and everything after it (a running turn is hard-stopped silently first; a still-queued message
+   * is just replaced in the queue), rewinds the SDK conversation to the last kept turn, then sends
+   * the new content as an ordinary message. Announced to clients with `messages_truncated`.
+   */
+  replaceMessageId?: string
 }
 
 // ---------------------------------------------------------------------------

@@ -387,6 +387,27 @@ async function saveClaudeTurnAnchor(
 }
 
 /**
+ * Drop turn anchors of messages an edit-and-resend discarded (both sidecars). Stale entries would
+ * be harmless — nothing can branch from a message that no longer exists — but they never expire.
+ */
+export async function removeTurnAnchors(sessionPath: string, messageIds: Iterable<string>): Promise<void> {
+  const ids = new Set(messageIds)
+  if (ids.size === 0) return
+
+  const pi = await loadPiTurnAnchors(sessionPath)
+  if (Object.keys(pi.anchors).some(id => ids.has(id))) {
+    for (const id of ids) delete pi.anchors[id]
+    await writeFile(getPiTurnAnchorsPath(sessionPath), JSON.stringify(pi), 'utf-8')
+  }
+
+  const claude = await loadClaudeTurnAnchors(sessionPath)
+  if (Object.keys(claude.anchors).some(id => ids.has(id))) {
+    for (const id of ids) delete claude.anchors[id]
+    await writeFile(getClaudeTurnAnchorsPath(sessionPath), JSON.stringify(claude), 'utf-8')
+  }
+}
+
+/**
  * Build MCP and API servers from sources using the new unified modules.
  * Handles credential loading and server building in one step.
  * When auth errors occur, updates source configs to reflect actual state.
@@ -930,6 +951,9 @@ interface ManagedSession {
   branchFromSdkTurnId?: string
   // One-shot flag for seeded branch mode - set true after first turn seed injection.
   branchSeedApplied?: boolean
+  // Edit-and-resend without a usable SDK anchor: the SDK conversation was reset, so the next turn
+  // re-injects the (already truncated) transcript once. Runtime-only, cleared when applied.
+  rewindSeedPending?: boolean
   // One-shot hidden summary injected on the first turn after a remote transfer.
   transferredSessionSummary?: string
   // Whether the transferred-session summary has already been injected.
@@ -4139,6 +4163,14 @@ export class SessionManager implements ISessionManager {
       }
 
       const getBranchSeedMessages = () => {
+        if (managed.rewindSeedPending) {
+          // The message being sent travels as the prompt itself; seeding it too would duplicate it.
+          const inFlight = new Set(managed.lastSentMessageIds ?? [])
+          return managed.messages
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .filter(m => !m.isIntermediate && !inFlight.has(m.id))
+            .map(m => ({ type: m.role as 'user' | 'assistant', content: m.content }))
+        }
         if (managed.branchContextStrategy !== 'seeded-fresh-session') return []
         if (managed.branchSeedApplied) return []
 
@@ -4153,6 +4185,11 @@ export class SessionManager implements ISessionManager {
       }
 
       const markBranchSeedApplied = () => {
+        if (managed.rewindSeedPending) {
+          managed.rewindSeedPending = false
+          sessionLog.info('Rewind seed context applied', { sessionId: managed.id })
+          return
+        }
         if (managed.branchContextStrategy !== 'seeded-fresh-session') return
         if (managed.branchSeedApplied) return
         managed.branchSeedApplied = true
@@ -6609,6 +6646,12 @@ export class SessionManager implements ISessionManager {
     // Ensure messages are loaded before we try to add new ones
     await this.ensureMessagesLoaded(managed)
 
+    // Edit-and-resend: drop the replaced message (and everything after it) and rewind the SDK
+    // conversation first; the new content then goes through the ordinary paths below.
+    if (options?.replaceMessageId) {
+      await this.applyReplaceMessage(managed, options.replaceMessageId)
+    }
+
     // If currently processing, behavior depends on the connection's
     // `midStreamBehavior` (resolved via {@link resolveMidStreamBehavior},
     // defaults to provider-appropriate value):
@@ -7240,6 +7283,158 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  /**
+   * Edit-and-resend (`SendMessageOptions.replaceMessageId`): remove a sent user message and
+   * everything after it, and rewind the SDK conversation to the last kept turn, in place.
+   *
+   * Three cases, by what the replaced message is:
+   * - queued: it never reached the SDK. Drop it and the later queue entries; the running turn is
+   *   untouched.
+   * - history (idle or running): the turn that message started, and anything after, is discarded.
+   *   A running turn is hard-stopped silently (new generation + stop epoch, so the old stream
+   *   loop exits without surfacing "Response interrupted" or touching the new turn's state, and
+   *   `wasInterrupted` stays false so the model is not told its reply was cut short).
+   *
+   * The SDK anchor of the last kept assistant message makes the rewind exact. Without one
+   * (interrupted turn, legacy session, forked branch that never ran) the SDK conversation is reset
+   * and the kept transcript re-injected once as a seed instead.
+   */
+  private async applyReplaceMessage(managed: ManagedSession, replaceMessageId: string): Promise<void> {
+    const sessionId = managed.id
+    const targetIdx = managed.messages.findIndex(m => m.id === replaceMessageId)
+    const target = managed.messages[targetIdx]
+    if (!target) throw new Error(`Message ${replaceMessageId} not found`)
+    if (target.role !== 'user' || target.hidden) throw new Error(`Message ${replaceMessageId} cannot be edited`)
+
+    const sessionPath = getSessionStoragePath(managed.workspace.rootPath, sessionId)
+    const announce = async (removedIds: Set<string>) => {
+      this.sendEvent({ type: 'messages_truncated', sessionId, removedMessageIds: [...removedIds] }, managed.workspace.id)
+      // The text-complete → craft message caches would otherwise pin the removed messages.
+      for (const cache of [managed.piSdkMessageToCraftMessage, managed.claudeTurnIdToCraftMessage]) {
+        if (!cache) continue
+        for (const [key, craftId] of cache) if (removedIds.has(craftId)) cache.delete(key)
+      }
+      try {
+        await removeTurnAnchors(sessionPath, removedIds)
+      } catch (error) {
+        sessionLog.warn(`Failed to prune turn anchors for session ${sessionId}:`, error)
+      }
+      this.persistSession(managed)
+      await this.flushSession(managed.id)
+    }
+
+    // Queued: only the queue (and its messages) changes; the running turn keeps going.
+    if (target.isQueued) {
+      const queueIdx = managed.messageQueue.findIndex(q => q.messageId === replaceMessageId)
+      const dropped = queueIdx >= 0 ? managed.messageQueue.splice(queueIdx) : []
+      const removedIds = new Set(dropped.map(q => q.messageId).filter((id): id is string => !!id))
+      removedIds.add(replaceMessageId)
+      managed.messages = managed.messages.filter(m => !removedIds.has(m.id))
+      await announce(removedIds)
+      return
+    }
+
+    // History: everything from the target on goes, plus any queued leftovers that sit before it.
+    const keptAll = managed.messages.slice(0, targetIdx)
+    const kept = keptAll.filter(m => !m.isQueued)
+    const keptIds = new Set(kept.map(m => m.id))
+    const removedIds = new Set(managed.messages.filter(m => !keptIds.has(m.id)).map(m => m.id))
+
+    // The anchor is exact only when the last conversational message kept is a final assistant
+    // reply: a user message after it (an interrupted turn) was never answered, so rewinding to the
+    // reply would silently lose it from the model's context.
+    const conversational = kept.filter(m => (m.role === 'user' || m.role === 'assistant') && !m.isIntermediate)
+    const lastKept = conversational[conversational.length - 1]
+    let anchorId: string | null | undefined // undefined: no exact anchor
+    if (!lastKept) {
+      anchorId = null
+    } else if (lastKept.role === 'assistant') {
+      anchorId = await this.lookupRewindAnchor(managed, sessionPath, lastKept.id)
+    }
+
+    const wasProcessing = managed.isProcessing
+    if (wasProcessing) {
+      // Supersede the running stream loop and invalidate anything still being prepared for it.
+      managed.processingGeneration++
+      managed.stopEpoch = (managed.stopEpoch ?? 0) + 1
+    }
+    managed.messageQueue = []
+    managed.acceptedSteers?.clear()
+    managed.wasInterrupted = false
+    managed.stopRequested = false
+
+    // An unstarted fork would otherwise still fork the whole parent; seed from the kept transcript.
+    const unstartedFork = managed.branchContextStrategy === 'sdk-fork' && !managed.sdkSessionId
+    if (unstartedFork) {
+      managed.branchFromSdkSessionId = undefined
+      managed.branchFromSdkCwd = undefined
+      managed.branchFromSdkTurnId = undefined
+      managed.branchContextStrategy = 'seeded-fresh-session'
+      managed.branchSeedApplied = false
+    }
+
+    let needsSeed = unstartedFork
+    const agent = managed.agent ?? (managed.sdkSessionId ? await this.getOrCreateAgent(managed) : null)
+    try {
+      if (agent?.rewindToTurn) {
+        let rewound = false
+        if (anchorId !== undefined && !unstartedFork) {
+          try {
+            rewound = await agent.rewindToTurn(anchorId)
+          } catch (error) {
+            sessionLog.warn(`Rewind to anchor failed for session ${sessionId}, resetting the SDK conversation instead:`, error)
+            anchorId = undefined
+          }
+        }
+        if (anchorId === undefined || unstartedFork) {
+          // No usable anchor: start the SDK conversation over and re-inject the kept transcript.
+          await agent.rewindToTurn(null)
+          needsSeed = true
+        } else if (!rewound) {
+          // Nothing to rewind natively (no SDK session yet): context, if any, comes from the seed.
+          needsSeed = true
+        }
+      } else if (agent) {
+        agent.forceAbort(AbortReason.Rewind)
+        needsSeed = true
+      }
+    } catch (error) {
+      if (wasProcessing) await this.onProcessingStopped(sessionId, 'interrupted')
+      throw error
+    }
+
+    managed.messages = kept
+    if (needsSeed && !unstartedFork && conversational.length > 0) managed.rewindSeedPending = true
+    managed.streamingText = ''
+    managed.streamingTurnId = undefined
+    // The rewind ends the old query, and the background work running in it with it.
+    this.markOrphanedBackgroundTasks(sessionId, true)
+
+    await announce(removedIds)
+    // The old stream loop is superseded and exits without cleanup, so reset the processing state here.
+    if (wasProcessing) await this.onProcessingStopped(sessionId, 'interrupted')
+    // Let the aborted turn's generator wind down before a new query starts on the same agent.
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+
+  /** Provider-native rewind anchor for a kept assistant message, or undefined when none is usable. */
+  private async lookupRewindAnchor(managed: ManagedSession, sessionPath: string, assistantMessageId: string): Promise<string | undefined> {
+    const { provider } = resolveBackendContext({
+      sessionConnectionSlug: managed.llmConnection,
+      workspaceDefaultConnectionSlug: loadWorkspaceConfig(managed.workspace.rootPath)?.defaults?.defaultLlmConnection,
+      managedModel: managed.model,
+    })
+    if (provider === 'pi') return getPiTurnAnchor(sessionPath, assistantMessageId)
+    if (provider === 'anthropic') {
+      const anchor = await getClaudeTurnAnchor(sessionPath, assistantMessageId)
+      // resumeSessionAt only works inside the SDK session the anchor was recorded in.
+      if (anchor && managed.sdkSessionId && anchor.sdkSessionId === managed.sdkSessionId && isClaudeMessageUuid(anchor.sdkMessageUuid)) {
+        return anchor.sdkMessageUuid
+      }
+    }
+    return undefined
+  }
+
   async cancelProcessing(sessionId: string, silent = false): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (!managed?.isProcessing) {
@@ -7867,8 +8062,8 @@ export class SessionManager implements ISessionManager {
    * No-op once WS2 keep-alive is enabled: with a persistent query the tasks
    * genuinely outlive the turn, so `keepBackgroundTasksAlive` short-circuits this.
    */
-  private markOrphanedBackgroundTasks(sessionId: string): void {
-    if (this.keepBackgroundTasksAlive) return
+  private markOrphanedBackgroundTasks(sessionId: string, force = false): void {
+    if (this.keepBackgroundTasksAlive && !force) return
     const managed = this.sessions.get(sessionId)
     if (!managed) return
     const now = Date.now()
