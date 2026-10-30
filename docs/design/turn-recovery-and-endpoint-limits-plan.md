@@ -23,6 +23,10 @@ Ground rules:
 - `packages/shared/src/config/__tests__/llm-connections.test.ts` covers `mergeModelEntries`: kept objects, added strings, removed ids, and order following the incoming list.
 - A handler-level case covers the `customEndpoint` merge. Add it to the existing `llm-connections` handler test if there is one; otherwise test it through the helper.
 
+**Deviations (as implemented).**
+- `mergeModelEntries` replaces an incoming entry with the stored object only when the incoming entry is a plain string. An incoming object is an explicit definition (for example a Pi tier list) and wins as given. The design's intent is unchanged, since the compat form only sends plain ids.
+- There is no handler-level test. The existing `connection-setup-updateOnly.test.ts` only simulates the guard logic, and the real handler needs the config store and credential manager, so a test could touch the user's config. The `customEndpoint` merge is a one-line spread; `mergeModelEntries` is unit-tested.
+
 **Then, outside the repo:** set `customEndpoint.maxTokens: 65536` on the user's Magpie connection in `~/.craft-agent/config.json`. Save a `.bak` copy first. This stops the 8192 truncations right away.
 
 **Commit:** `fix(llm-connections): keep endpoint overrides when a connection is edited`. The body explains that the form only sends `{api}` and plain ids.

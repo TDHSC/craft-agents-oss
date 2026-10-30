@@ -1,5 +1,5 @@
 import { RPC_CHANNELS, type LlmConnectionSetup } from '@craft-agent/shared/protocol'
-import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
+import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, mergeModelEntries, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
@@ -112,7 +112,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         updates.defaultModel = setup.defaultModel ?? undefined
       }
       if (setup.models !== undefined) {
-        updates.models = setup.models ?? undefined
+        updates.models = setup.models ? mergeModelEntries(connection.models, setup.models) : undefined
       }
       if (setup.modelSelectionMode !== undefined) {
         updates.modelSelectionMode = setup.modelSelectionMode
@@ -121,7 +121,8 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       const customEndpoint = hasConfiguredBaseUrl ? setup.customEndpoint : undefined
       const isCustomEndpointCompat = !!customEndpoint
       if (customEndpoint) {
-        updates.customEndpoint = customEndpoint
+        // The form only sends `api`; keep the endpoint-wide overrides (`maxTokens`, `supportsImages`).
+        updates.customEndpoint = { ...connection.customEndpoint, ...customEndpoint }
         updates.providerType = 'pi_compat'
         const branch = resolveCustomEndpointSetup({
           baseUrl: setup.baseUrl ?? undefined,

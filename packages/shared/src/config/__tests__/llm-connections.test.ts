@@ -12,7 +12,9 @@ import {
   normalizeBedrockModelId,
   deriveBedrockRegionPrefix,
   getMiniModel,
+  mergeModelEntries,
 } from '../llm-connections'
+import type { ModelDefinition } from '../models'
 import { ANTHROPIC_MODELS, getModelDisplayName, getModelContextWindow, getModelShortName, isClaudeModel, normalizeDeprecatedModelId } from '../models'
 
 // ============================================================
@@ -578,5 +580,39 @@ describe('getMiniModel', () => {
     expect(getDefaultModelForConnection('pi', 'cloudflare-ai-gateway')).toBe('pi/claude-opus-5-5')
     const models = getDefaultModelsForConnection('pi', 'cloudflare-ai-gateway').map(m => typeof m === 'string' ? m : m.id)
     expect(getMiniModel({ providerType: 'pi', piAuthProvider: 'cloudflare-ai-gateway', models })).toBe('pi/claude-haiku-4-5')
+  })
+})
+
+// ============================================================
+// mergeModelEntries
+// ============================================================
+
+describe('mergeModelEntries', () => {
+  const tuned = { id: 'a', name: 'a', shortName: 'a', supportsImages: true } as unknown as ModelDefinition
+
+  it('keeps the stored object for an id the form sends as a plain string', () => {
+    expect(mergeModelEntries([tuned], ['a'])).toEqual([tuned])
+    expect(mergeModelEntries([tuned], ['a'])[0]).toBe(tuned)
+  })
+
+  it('adds new ids as given', () => {
+    expect(mergeModelEntries([tuned], ['a', 'b'])).toEqual([tuned, 'b'])
+  })
+
+  it('drops ids that are no longer listed', () => {
+    expect(mergeModelEntries([tuned, 'b'], ['b'])).toEqual(['b'])
+  })
+
+  it('follows the incoming order', () => {
+    expect(mergeModelEntries(['b', tuned], ['a', 'b'])).toEqual([tuned, 'b'])
+  })
+
+  it('never replaces an incoming object with the stored entry', () => {
+    const edited = { id: 'a', name: 'A', shortName: 'A' } as unknown as ModelDefinition
+    expect(mergeModelEntries([tuned], [edited])).toEqual([edited])
+  })
+
+  it('returns the incoming list when nothing is stored', () => {
+    expect(mergeModelEntries(undefined, ['a', 'b'])).toEqual(['a', 'b'])
   })
 })

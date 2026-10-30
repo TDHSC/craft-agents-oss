@@ -576,6 +576,27 @@ export function setModelSupportsImages(
 }
 
 /**
+ * Merge the model list sent by the connection form into the stored one.
+ *
+ * The form only knows plain ids, so saving it as-is dropped every per-model
+ * override (`maxTokens`, `supportsImages`, ...). For each incoming id that is
+ * already stored, the stored object is kept; new ids are added as given and ids
+ * that are no longer listed are dropped. The incoming order wins. An incoming
+ * object is an explicit definition and is never replaced.
+ */
+export function mergeModelEntries(
+  existing: Array<ModelDefinition | string> | undefined,
+  incoming: Array<ModelDefinition | string>,
+): Array<ModelDefinition | string> {
+  const idOf = (m: ModelDefinition | string) => (typeof m === 'string' ? m : m.id);
+  const stored = new Map<string, ModelDefinition | string>();
+  for (const m of existing ?? []) {
+    if (!stored.has(idOf(m))) stored.set(idOf(m), m);
+  }
+  return incoming.map(m => (typeof m === 'string' ? stored.get(m) ?? m : m));
+}
+
+/**
  * Resolve whether a given model on a connection accepts image input.
  *
  * For `pi_compat` (custom-endpoint) connections this mirrors the precedence used
