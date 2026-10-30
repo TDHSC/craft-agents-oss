@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { coerceInputText, appendRestoredInput } from "@/lib/input-text"
+import { coerceInputText, appendRestoredInput, shouldRestorePromptOnStop } from "@/lib/input-text"
 import { useDelayedLoading } from "@/hooks/useDelayedLoading"
 import {
   parseReadResult,
@@ -56,6 +56,7 @@ import type { RichTextInputHandle } from "@/components/ui/rich-text-input"
 import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
 import type { BackgroundTask } from "@/atoms/sessions"
 import type { BackgroundTaskOutput } from "@craft-agent/shared/protocol"
+import { getResumableStop } from "@craft-agent/shared/sessions/resumable-stop"
 import { agentDocument } from "./BackgroundTaskChip"
 import { runCommandMessage } from "@/lib/run-command-message"
 import { useTurnCardExpansion } from "@/hooks/useTurnCardExpansion"
@@ -1248,7 +1249,9 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     // back in the input so the user can tweak and resend. Append to any draft.
     // Exclude isQueued messages — those are restored separately by the backend
     // `restore_input` effect (App.tsx) and would otherwise double up here.
-    if (!silent) {
+    // Only when the stopped turn produced nothing: otherwise the composer offers ▶ to
+    // continue it, and a restored prompt would invite a duplicate resend.
+    if (!silent && shouldRestorePromptOnStop(session.messages)) {
       const lastUserMsg = [...session.messages].reverse().find(m => m.role === 'user' && !m.isQueued)
       const restoredText = coerceInputText(lastUserMsg?.content)
       if (restoredText) {
@@ -1258,6 +1261,16 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
     window.electronAPI.cancelProcessing(session.id, silent).catch(error => {
       console.error('[ChatDisplay] Failed to cancel processing:', error)
+    })
+  }
+
+  // ▶ in the composer and Retry on a resumable error card: continue in place (a hidden
+  // "Continue where you left off."), without a duplicate user bubble.
+  const canContinue = !!session && !session.isProcessing && getResumableStop(session.messages) !== null
+  const handleContinue = () => {
+    if (!session) return
+    window.electronAPI.sessionCommand(session.id, { type: 'continueTurn' }).catch(error => {
+      console.error('[ChatDisplay] Failed to continue turn:', error)
     })
   }
 
@@ -1568,6 +1581,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             onOpenUrl={onOpenUrl}
                             sessionId={session?.id}
                             onRetry={turn.message.role === 'error' ? () => {
+                              // Resending the last message would add a duplicate bubble
+                              if (canContinue && getResumableStop([turn.message])) {
+                                handleContinue()
+                                return
+                              }
                               const msgs = session?.messages
                               if (!msgs) return
                               const errorIdx = msgs.findIndex(m => m.id === turn.message.id)
@@ -1843,6 +1861,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onAnimatedHeightChange: handleAnimatedHeightChange,
               onSubmit: handleSubmit,
               onStop: handleStop,
+              canContinue,
+              onContinue: handleContinue,
               textareaRef,
               currentModel,
               onModelChange,

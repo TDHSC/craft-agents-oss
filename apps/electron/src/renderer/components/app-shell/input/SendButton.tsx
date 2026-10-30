@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, Square } from 'lucide-react'
+import { ArrowUp, Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -17,9 +17,12 @@ interface SendButtonProps {
   /** Send is not possible (no content, disabled input or tutorial gate) */
   disabled: boolean
   onStop: () => void
+  /** Idle, nothing typed and the last turn stopped abnormally: renders ▶ Continue instead of Send */
+  canContinue: boolean
+  onContinue: () => void
 }
 
-export function SendButton({ isProcessing, disabled, onStop }: SendButtonProps) {
+export function SendButton({ isProcessing, disabled, onStop, canContinue, onContinue }: SendButtonProps) {
   const { t } = useTranslation()
 
   if (isProcessing) {
@@ -34,6 +37,22 @@ export function SendButton({ isProcessing, disabled, onStop }: SendButtonProps) 
         onClick={onStop}
       >
         <Square className="size-2.5 fill-current" />
+      </Button>
+    )
+  }
+
+  if (canContinue) {
+    return (
+      <Button
+        type="button"
+        variant="primary"
+        size="icon"
+        aria-label={t('chat.continueResponse')}
+        data-state="continue"
+        className={SEND_BASE}
+        onClick={onContinue}
+      >
+        <Play className="size-3.5 fill-current" />
       </Button>
     )
   }

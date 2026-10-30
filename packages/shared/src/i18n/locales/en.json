@@ -228,6 +228,7 @@
   "chat.contextUsage.tokensOfLimit": "{{used}} / {{limit}} tokens",
   "chat.contextUsage.unknown": "Usage unknown",
   "chat.contextUsage.waitToCompact": "Wait for the current operation before compacting",
+  "chat.continueResponse": "Continue",
   "chat.conversationCompacted": "Conversation compacted",
   "chat.credentials.authenticationRequired": "Authentication Required",
   "chat.credentials.hideValue": "Hide value",

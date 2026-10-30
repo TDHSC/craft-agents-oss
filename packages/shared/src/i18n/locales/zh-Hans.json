@@ -228,6 +228,7 @@
   "chat.contextUsage.tokensOfLimit": "{{used}} / {{limit}} 个令牌",
   "chat.contextUsage.unknown": "使用量未知",
   "chat.contextUsage.waitToCompact": "请等待当前操作完成后再压缩",
+  "chat.continueResponse": "继续",
   "chat.conversationCompacted": "对话已压缩",
   "chat.credentials.authenticationRequired": "需要身份验证",
   "chat.credentials.hideValue": "隐藏值",

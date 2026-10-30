@@ -497,6 +497,11 @@ export interface SendMessageOptions {
    */
   hidden?: boolean
   /**
+   * Set by `continueTurn` on its hidden notice. `'user'` (▶ or Retry) counts as a turn from the
+   * user, as a typed message does; `'auto'` (auto-continue) does not. Not for clients to send.
+   */
+  continueTrigger?: 'user' | 'auto'
+  /**
    * Thinking level for this turn only (and its automatic retries); the session's own level is
    * unchanged and no adaptive-thinking check runs. Used by app-driven turns with a known shape,
    * e.g. the tasks:generate authoring turn.
@@ -530,6 +535,8 @@ export type SessionCommand =
   | { type: 'setCodingMode'; enabled: boolean }
   /** Coding mode is fixed once a session has messages: continue in a new session with it switched. Returns `{ sessionId }`. */
   | { type: 'continueInNewSession'; codingMode: boolean }
+  /** Continue a turn that stopped abnormally (▶ in the composer, Retry on an error card): sends one hidden "Continue where you left off." */
+  | { type: 'continueTurn' }
   | { type: 'updateWorkingDirectory'; dir: string }
   | { type: 'setSources'; sourceSlugs: string[] }
   | { type: 'setLabels'; labels: string[] }

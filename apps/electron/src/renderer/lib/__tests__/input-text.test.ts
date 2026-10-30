@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { appendRestoredInput, coerceInputText } from '../input-text'
+import { appendRestoredInput, coerceInputText, shouldRestorePromptOnStop } from '../input-text'
 
 describe('coerceInputText', () => {
   it('preserves plain strings', () => {
@@ -48,5 +48,38 @@ describe('appendRestoredInput', () => {
 
   it('coerces malformed (non-string) persisted draft values defensively', () => {
     expect(appendRestoredInput({ text: 'draft' } as unknown as string, 'msg')).toBe('draft\n\nmsg')
+  })
+})
+
+describe('shouldRestorePromptOnStop', () => {
+  const m = (role: string, extra: { content?: string; isQueued?: boolean } = {}) => ({ role, ...extra })
+
+  it('restores when the stopped turn produced nothing', () => {
+    expect(shouldRestorePromptOnStop([m('user', { content: 'hi' })])).toBe(true)
+    expect(shouldRestorePromptOnStop([m('user'), m('assistant', { content: 'ok' }), m('user', { content: 'again' })])).toBe(true)
+  })
+
+  it('ignores an assistant message that has no text yet', () => {
+    expect(shouldRestorePromptOnStop([m('user'), m('assistant', { content: '' })])).toBe(true)
+    expect(shouldRestorePromptOnStop([m('user'), m('assistant', { content: '  \n' })])).toBe(true)
+    expect(shouldRestorePromptOnStop([m('user'), m('status'), m('info')])).toBe(true)
+  })
+
+  it('does not restore once the turn produced assistant text', () => {
+    expect(shouldRestorePromptOnStop([m('user'), m('assistant', { content: 'Working on it' })])).toBe(false)
+  })
+
+  it('does not restore once the turn made a tool call', () => {
+    expect(shouldRestorePromptOnStop([m('user'), m('tool')])).toBe(false)
+  })
+
+  it('measures from the last user message that is not queued', () => {
+    expect(shouldRestorePromptOnStop([m('user'), m('assistant', { content: 'done' }), m('user'), m('user', { isQueued: true })])).toBe(true)
+    expect(shouldRestorePromptOnStop([m('user'), m('tool'), m('user', { isQueued: true })])).toBe(false)
+  })
+
+  it('has nothing to restore without a sent user message', () => {
+    expect(shouldRestorePromptOnStop([])).toBe(false)
+    expect(shouldRestorePromptOnStop([m('user', { isQueued: true })])).toBe(false)
   })
 })

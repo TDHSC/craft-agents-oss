@@ -74,6 +74,7 @@ import {
   type SessionHeader,
   pickSessionFields,
 } from '@craft-agent/shared/sessions'
+import { getResumableStop } from '@craft-agent/shared/sessions/resumable-stop'
 import { serializeHeaderCredential, loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, TokenRefreshManager } from '@craft-agent/shared/sources'
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
@@ -1250,6 +1251,9 @@ interface PendingDelta {
   delta: string
   turnId?: string
 }
+
+/** The hidden notice `continueTurn` sends; the model sees one extra line per continue. */
+const CONTINUE_PROMPT = 'Continue where you left off.'
 
 /** Frame an app-generated message the agent receives as a user turn, so it is not mistaken for the user. */
 export function labelSystemNotice(text: string): string {
@@ -6628,7 +6632,7 @@ export class SessionManager implements ISessionManager {
       sessionLog.info(`sendMessage: dropped duplicate source-activation retry for ${sessionId}`)
       return
     }
-    if (!activationResend && !_isAuthRetry) managed.turnFromUser = !options?.hidden
+    if (!activationResend && !_isAuthRetry) managed.turnFromUser = !options?.hidden || options?.continueTrigger === 'user'
 
     // Clear any pending plan execution state when a new user message is sent.
     // The explicit /compact turn immediately after "Accept & Compact" is the
@@ -7503,6 +7507,8 @@ export class SessionManager implements ISessionManager {
         role: 'info',
         content: 'Response interrupted',
         timestamp: this.monotonic(),
+        // Marks the stop so the session can offer to continue (`getResumableStop`)
+        statusType: 'interrupted',
       }
       managed.messages.push(interruptedMessage)
       this.sendEvent({
@@ -8821,13 +8827,30 @@ export class SessionManager implements ISessionManager {
    * and labelled as sent by Craft Agents, not the user — the same path background-task completions
    * use. Returns false, sending nothing, when the session is missing or busy, so the caller can retry.
    */
-  wakeIdleSessionWithNotice(sessionId: string, text: string): boolean {
+  wakeIdleSessionWithNotice(sessionId: string, text: string, options?: SendMessageOptions): boolean {
     const managed = this.sessions.get(sessionId)
     if (!managed || managed.isProcessing) return false
-    void this.sendMessage(sessionId, labelSystemNotice(text), [], [], { hidden: true }).catch((err) => {
+    void this.sendMessage(sessionId, labelSystemNotice(text), [], [], { ...options, hidden: true }).catch((err) => {
       sessionLog.error(`Session ${sessionId}: failed to start a system-notice turn:`, err)
     })
     return true
+  }
+
+  /**
+   * Continue a turn that stopped abnormally: an error, a reply cut off at the output limit, a user
+   * Stop, or a turn an app exit cut off (`getResumableStop` is the one rule). It sends one hidden
+   * notice, not Pi's `agent.continue()`, which would skip Craft's system prompt and the run
+   * lifecycle (design: turn-recovery-and-endpoint-limits.md §3.4). The turn uses the session's
+   * current model. Returns false, sending nothing, when the session is busy or has nothing to continue.
+   */
+  async continueTurn(sessionId: string, trigger: 'user' | 'auto' = 'user'): Promise<boolean> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed || managed.isProcessing) return false
+    await this.ensureMessagesLoaded(managed)
+    if (managed.isProcessing || !getResumableStop(managed.messages)) return false
+    // Otherwise the turn carries the "previous response was interrupted, do not continue" reminder.
+    managed.wasInterrupted = false
+    return this.wakeIdleSessionWithNotice(sessionId, CONTINUE_PROMPT, { continueTrigger: trigger })
   }
 
   /**

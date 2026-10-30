@@ -228,6 +228,7 @@
   "chat.contextUsage.tokensOfLimit": "{{used}} / {{limit}} トークン",
   "chat.contextUsage.unknown": "使用量不明",
   "chat.contextUsage.waitToCompact": "圧縮する前に現在の操作が完了するまで待ってください",
+  "chat.continueResponse": "続ける",
   "chat.conversationCompacted": "会話を圧縮しました",
   "chat.credentials.authenticationRequired": "認証が必要です",
   "chat.credentials.hideValue": "値を非表示",

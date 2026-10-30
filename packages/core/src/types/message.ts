@@ -298,7 +298,7 @@ export interface Message {
   // Turn ID: Correlation ID from the API's message.id, groups all messages in an assistant turn
   turnId?: string;
   // Status type for special status messages (retrying is transient renderer state)
-  statusType?: 'compacting' | 'compaction_complete' | 'retrying';
+  statusType?: 'compacting' | 'compaction_complete' | 'retrying' | 'interrupted';
   // Info level for info messages (determines icon/color)
   infoLevel?: 'info' | 'warning' | 'error' | 'success';
   // Error-specific fields (for typed errors with diagnostics)
@@ -377,7 +377,7 @@ export interface StoredMessage {
   isIntermediate?: boolean;
   turnId?: string;
   // Status type (retry progress is not persisted by the session manager)
-  statusType?: 'compacting' | 'compaction_complete' | 'retrying';
+  statusType?: 'compacting' | 'compaction_complete' | 'retrying' | 'interrupted';
   // Info level for info messages (persisted for reload)
   infoLevel?: 'info' | 'warning' | 'error' | 'success';
   // Error display fields

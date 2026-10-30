@@ -228,6 +228,7 @@
   "chat.contextUsage.tokensOfLimit": "{{used}} / {{limit}} token",
   "chat.contextUsage.unknown": "Ismeretlen használat",
   "chat.contextUsage.waitToCompact": "Várj az aktuális művelet befejezéséig a tömörítés előtt",
+  "chat.continueResponse": "Folytatás",
   "chat.conversationCompacted": "Beszélgetés tömörítve",
   "chat.credentials.authenticationRequired": "Hitelesítés szükséges",
   "chat.credentials.hideValue": "Érték elrejtése",

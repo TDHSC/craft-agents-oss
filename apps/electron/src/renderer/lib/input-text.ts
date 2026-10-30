@@ -23,6 +23,22 @@ export function coerceInputText(value: unknown): string {
 }
 
 /**
+ * Whether Stop should put the last prompt back in the input. Only when the stopped turn
+ * produced nothing (no reply text, no tool call after the last sent user message): resending
+ * the prompt is then the natural next step. Otherwise the composer shows ▶ to continue
+ * (`getResumableStop`), and putting the prompt back would invite a duplicate resend.
+ */
+export function shouldRestorePromptOnStop(
+  messages: ReadonlyArray<{ role: string; content?: string; isQueued?: boolean }>,
+): boolean {
+  const lastUser = messages.findLastIndex(m => m.role === 'user' && !m.isQueued)
+  if (lastUser === -1) return false
+  return !messages.slice(lastUser + 1).some(m =>
+    m.role === 'tool' || (m.role === 'assistant' && coerceInputText(m.content).trim() !== ''),
+  )
+}
+
+/**
  * Combine an existing input draft with text being restored (e.g. the last
  * user message put back on Stop). Appends with a blank line so a half-typed
  * draft isn't clobbered; returns the non-empty side when the other is empty.

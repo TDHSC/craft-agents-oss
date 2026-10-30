@@ -121,6 +121,9 @@ export interface FreeFormInputProps {
   onSubmit: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
   /** Callback to stop processing. Pass silent=true to skip "Response interrupted" message */
   onStop?: (silent?: boolean) => void
+  /** The session stopped abnormally and can be continued (`getResumableStop`); Send becomes ▶ while the input is empty */
+  canContinue?: boolean
+  onContinue?: () => void
   /** External ref for the input */
   inputRef?: React.RefObject<RichTextInputHandle>
   /** Current model ID */
@@ -264,6 +267,8 @@ export function FreeFormInput({
   isProcessing = false,
   onSubmit,
   onStop,
+  canContinue,
+  onContinue,
   inputRef: externalInputRef,
   currentModel,
   onModelChange,
@@ -1928,6 +1933,8 @@ export function FreeFormInput({
             isProcessing={isProcessing}
             disabled={!hasContent || disabled || disableSend}
             onStop={() => handleStop(false)}
+            canContinue={!!canContinue && !hasContent && !disabled && !disableSend}
+            onContinue={() => onContinue?.()}
           />
           </div>
         </div>

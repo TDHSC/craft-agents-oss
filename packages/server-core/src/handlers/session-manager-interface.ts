@@ -101,7 +101,9 @@ export interface ISessionManager {
   /** A session's metadata without loading its messages (cheap, unlike getSession). */
   getSessionSnapshot(sessionId: string): Session | null
   /** Start a hidden, app-labelled turn in an idle session; false (nothing sent) when missing or busy. */
-  wakeIdleSessionWithNotice(sessionId: string, text: string): boolean
+  wakeIdleSessionWithNotice(sessionId: string, text: string, options?: SendMessageOptions): boolean
+  /** Continue a turn that stopped abnormally (see `getResumableStop`); false (nothing sent) when there is nothing to continue. */
+  continueTurn(sessionId: string, trigger?: 'user' | 'auto'): Promise<boolean>
   updateWorkingDirectory(sessionId: string, path: string): void
   setSessionSources(sessionId: string, sourceSlugs: string[]): Promise<void>
   setSessionLabels(sessionId: string, labels: string[]): void

@@ -187,6 +187,13 @@ The model list itself is never replaced, so `userDefined3Tier` lists stay exactl
 - Extend `error-message-actions.test.ts` if the Retry wiring is tested there.
 - Add a pure `shouldRestorePromptOnStop(messages)` helper next to `handleStop`'s other helpers and unit-test it.
 
+**Deviations (as implemented).**
+- The two points the plan did not verify: the renderer sends a command with `window.electronAPI.sessionCommand(sessionId, command)`, and `session-manager-interface.ts` mirrors `SessionManager` methods, not `SessionCommand` variants. So `continueTurn(sessionId, trigger?)` is added to the interface as a method, and the `continueTurn` command handler returns nothing (the existing overloads of `sessionCommand` already allow `void`).
+- `continueTurn` goes through the existing `wakeIdleSessionWithNotice` (hidden, labelled notice, fire-and-forget), which gains an optional `SendMessageOptions` argument, instead of calling `sendMessage` itself. The RPC therefore returns at once and not when the turn ends; `continueTrigger` travels in those options.
+- Retry on the error card asks `getResumableStop([message])` instead of `RESUMABLE_ERROR_CODES.includes(code)`, so an `output_truncated` card also continues (it is not in that list: it has its own reason). It continues only when the session's last stop is resumable (`canContinue`); an older card keeps the resend. `RESUMABLE_ERROR_CODES` is still exported.
+- `error-message-actions.test.ts` is not extended: the Retry wiring is inline in `ChatDisplay`, not in `error-message-actions.ts`. `shouldRestorePromptOnStop` lives in `lib/input-text.ts` next to the other restore helpers and is tested there.
+- An assistant message with no text yet does not count as "produced something" in `shouldRestorePromptOnStop` (design: "no assistant text").
+
 **Commit:** `feat(chat): continue an abnormally stopped turn from the composer`. The body names the hidden-notice choice and why the Pi `continue()` path was rejected (design §3.4).
 
 ## Step 6: auto-continue at the quota reset

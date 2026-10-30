@@ -338,6 +338,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.setSessionCodingMode(sessionId, command.enabled)
       case 'continueInNewSession':
         return sessionManager.continueSessionInNewSession(sessionId, command.codingMode === true)
+      case 'continueTurn':
+        return sessionManager.continueTurn(sessionId, 'user').then(() => undefined)
       case 'updateWorkingDirectory':
         return sessionManager.updateWorkingDirectory(sessionId, command.dir)
       case 'setSources':

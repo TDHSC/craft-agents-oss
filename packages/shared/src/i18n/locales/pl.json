@@ -232,6 +232,7 @@
   "chat.contextUsage.tokensOfLimit": "{{used}} / {{limit}} tokenów",
   "chat.contextUsage.unknown": "Użycie nieznane",
   "chat.contextUsage.waitToCompact": "Poczekaj na zakończenie bieżącej operacji przed kompaktowaniem",
+  "chat.continueResponse": "Kontynuuj",
   "chat.conversationCompacted": "Rozmowa skompaktowana",
   "chat.credentials.authenticationRequired": "Wymagane uwierzytelnienie",
   "chat.credentials.hideValue": "Ukryj wartość",
