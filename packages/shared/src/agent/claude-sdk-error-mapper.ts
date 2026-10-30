@@ -409,7 +409,7 @@ export function mapClaudeSdkAssistantError(
 
     case 'max_output_tokens':
       return {
-        code: 'invalid_request',
+        code: 'output_truncated',
         title: 'Output Too Large',
         message: 'The response exceeded the maximum output token limit.',
         details: ['Try breaking the task into smaller parts', 'Reduce the scope of the request'],

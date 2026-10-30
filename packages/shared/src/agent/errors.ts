@@ -104,7 +104,7 @@ const ERROR_DEFINITIONS: Record<ErrorCode, Omit<AgentError, 'code' | 'originalEr
   },
   rate_limited: {
     title: 'Rate Limited',
-    message: 'Rate limit reached. Will auto-retry shortly.',
+    message: 'Rate limit reached. Retries did not succeed.',
     actions: [
       { key: 'r', label: 'Retry', action: 'retry' },
     ],
@@ -219,6 +219,14 @@ const ERROR_DEFINITIONS: Record<ErrorCode, Omit<AgentError, 'code' | 'originalEr
     ],
     canRetry: true,
     retryDelayMs: 5000,
+  },
+  output_truncated: {
+    title: 'Reply Cut Off',
+    message: 'The reply was cut off at the output token limit. Continue to let the model finish, or raise the limit for this model.',
+    actions: [
+      { key: 'r', label: 'Retry', action: 'retry' },
+    ],
+    canRetry: true,
   },
   queued_message_replay_failed: {
     title: 'Queued message could not be sent',

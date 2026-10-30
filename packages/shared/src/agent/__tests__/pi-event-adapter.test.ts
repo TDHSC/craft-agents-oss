@@ -613,6 +613,60 @@ describe('PiEventAdapter', () => {
       ]);
     });
 
+    describe('output limit (stopReason length)', () => {
+      const usage = { input: 100, output: 8192, cacheRead: 0, cacheWrite: 0, totalTokens: 8292, cost: { total: 0 } };
+
+      it('emits output_truncated for an empty reply cut off by reasoning', () => {
+        collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+        const events = collect(adapter.adaptEvent({
+          type: 'message_end',
+          message: { role: 'assistant', stopReason: 'length', content: [], usage },
+        } as any));
+
+        expect(events.map(e => e.type)).toEqual(['usage_update', 'typed_error']);
+        expect(events[1].error).toMatchObject({
+          code: 'output_truncated',
+          canRetry: true,
+          message: 'Reply cut off at the output limit (8192 tokens).',
+        });
+      });
+
+      it('emits the partial text first, then output_truncated', () => {
+        collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+        const events = collect(adapter.adaptEvent({
+          type: 'message_end',
+          message: { role: 'assistant', stopReason: 'length', content: 'The answer begins', usage },
+        } as any));
+
+        expect(events.map(e => e.type)).toEqual(['text_complete', 'usage_update', 'typed_error']);
+        expect(events[0]).toMatchObject({ text: 'The answer begins', isIntermediate: false });
+        expect(events[2].error.code).toBe('output_truncated');
+      });
+
+      it('keeps the generic message when the output count is unknown', () => {
+        collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+        const events = collect(adapter.adaptEvent({
+          type: 'message_end',
+          message: { role: 'assistant', stopReason: 'length', content: [] },
+        } as any));
+
+        expect(events).toHaveLength(1);
+        expect(events[0].error.code).toBe('output_truncated');
+        expect(events[0].error.message).toContain('output token limit');
+      });
+
+      it('leaves intermediate toolUse messages and normal stops untouched', () => {
+        collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+        for (const stopReason of ['toolUse', 'stop']) {
+          const events = collect(adapter.adaptEvent({
+            type: 'message_end',
+            message: { role: 'assistant', stopReason, content: 'text', usage },
+          } as any));
+          expect(events.some(e => e.type === 'typed_error')).toBe(false);
+        }
+      });
+    });
+
     it('should not emit error without errorMessage even if stopReason is error', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
       const events = collect(adapter.adaptEvent({

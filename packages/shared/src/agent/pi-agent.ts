@@ -92,7 +92,7 @@ import { homedir } from 'os';
 import { getSessionDataPath, getSessionPath, getSessionPlansPath } from '../sessions/storage.ts';
 
 // Error typing
-import { parseError, type AgentError } from './errors.ts';
+import { createAgentError, parseError, type AgentError } from './errors.ts';
 
 // Centralized PreToolUse pipeline
 import { runPreToolUseChecks, type PreToolUseCheckResult, type PreToolUseInput } from './core/pre-tool-use.ts';
@@ -2850,17 +2850,7 @@ export class PiAgent extends BaseAgent {
 
     // Rate limiting
     if (errorMessage.includes('rate') || errorMessage.includes('429')) {
-      return {
-        code: 'rate_limited',
-        title: 'Rate Limited',
-        message: 'Too many requests. Please wait a moment before trying again.',
-        actions: [
-          { key: 'r', label: 'Retry', action: 'retry' },
-        ],
-        canRetry: true,
-        retryDelayMs: 5000,
-        originalError: error.message,
-      };
+      return createAgentError('rate_limited', error.message);
     }
 
     // Service errors

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseError } from '../errors.ts'
+import { createAgentError, parseError } from '../errors.ts'
 
 describe('parseError proxy interception handling', () => {
   it('maps interceptor proxy marker message to proxy_error', () => {
@@ -67,5 +67,21 @@ describe('parseError tool-support classification', () => {
       const parsed = parseError(new Error(message))
       expect(parsed.code).toBe('model_no_tool_support')
     }
+  })
+})
+
+describe('rate limit and truncation text', () => {
+  it('does not promise a retry that already ran out', () => {
+    const parsed = parseError(new Error('429 Individual quota reached. Resets in 40h1m10s'))
+    expect(parsed.code).toBe('rate_limited')
+    expect(parsed.message).toBe('Rate limit reached. Retries did not succeed.')
+    expect(parsed.actions.some(a => a.action === 'retry')).toBe(true)
+  })
+
+  it('defines output_truncated as a retryable error with a Retry action', () => {
+    const error = createAgentError('output_truncated')
+    expect(error.title).toBe('Reply Cut Off')
+    expect(error.canRetry).toBe(true)
+    expect(error.actions.some(a => a.action === 'retry')).toBe(true)
   })
 })

@@ -14,6 +14,14 @@ describe('mapClaudeSdkAssistantError', () => {
     expect(error.message.toLowerCase()).toContain('provider');
   });
 
+  it('maps max_output_tokens to output_truncated, keeping its details', () => {
+    const error = mapClaudeSdkAssistantError('max_output_tokens', baseContext);
+
+    expect(error.code).toBe('output_truncated');
+    expect(error.canRetry).toBe(true);
+    expect(error.details?.length).toBeGreaterThan(0);
+  });
+
   it('maps unknown + captured 500 to provider_error', () => {
     const error = mapClaudeSdkAssistantError('unknown', {
       ...baseContext,
