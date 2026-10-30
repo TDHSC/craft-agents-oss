@@ -536,6 +536,52 @@ export function createAgentError(
   };
 }
 
+const DURATION_UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1_000, sec: 1_000, secs: 1_000, second: 1_000, seconds: 1_000,
+  m: 60_000, min: 60_000, mins: 60_000, minute: 60_000, minutes: 60_000,
+  h: 3_600_000, hr: 3_600_000, hrs: 3_600_000, hour: 3_600_000, hours: 3_600_000,
+  d: 86_400_000, day: 86_400_000, days: 86_400_000,
+};
+
+/** `40h1m10s`, `5 minutes`, `1.5s`, `350ms`, `2 hours 5 minutes` → milliseconds. */
+const DURATION = String.raw`(?:\d+(?:\.\d+)?\s*[a-z]+[\s,]*(?:and\s+)?)+`;
+
+function durationToMs(text: string): number | undefined {
+  let total = 0;
+  let matched = false;
+  for (const [, amount, unit] of text.matchAll(/(\d+(?:\.\d+)?)\s*([a-z]+)/gi)) {
+    const ms = DURATION_UNIT_MS[unit!.toLowerCase()];
+    if (ms === undefined) return undefined;
+    total += Number(amount) * ms;
+    matched = true;
+  }
+  return matched && total > 0 ? total : undefined;
+}
+
+/**
+ * When a rate limit or quota error says it ends (epoch ms), read from the provider's text:
+ * `Resets in 40h1m10s`, `try again in 20s` / `in 5 minutes`, `retry after 30 seconds`, or an ISO
+ * timestamp after "reset". Provider texts have no standard form, so anything else is `undefined`
+ * and the caller simply does not schedule anything.
+ */
+export function parseRateLimitResetAt(text: string, now: number): number | undefined {
+  const relative = text.match(new RegExp(String.raw`\b(?:resets?|try again|retry)\s+(?:in|after)\s*:?\s*(${DURATION})`, 'i'))
+    ?? text.match(/\bretry[- ]after\s*:?\s*(\d+(?:\.\d+)?)\b(?!\s*[a-z])/i);
+  if (relative) {
+    // A bare number after "retry after" is seconds (the Retry-After header).
+    const ms = durationToMs(/[a-z]/i.test(relative[1]!) ? relative[1]! : `${relative[1]}s`);
+    if (ms !== undefined) return now + Math.round(ms);
+  }
+
+  const absolute = text.match(/\breset[^\d]{0,24}(\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)/i);
+  if (absolute) {
+    const at = Date.parse(absolute[1]!);
+    if (Number.isFinite(at)) return at;
+  }
+  return undefined;
+}
+
 /**
  * Check if an error is a billing/auth error that blocks usage
  */

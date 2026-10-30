@@ -723,6 +723,8 @@ export interface ElectronAPI {
   /** Claude auto-compact window in tokens; null = the SDK default (the model's full window) */
   getAutoCompactWindow(): Promise<number | null>
   setAutoCompactWindow(tokens: number | null): Promise<void>
+  getAutoContinueAfterLimitReset(): Promise<boolean>
+  setAutoContinueAfterLimitReset(enabled: boolean): Promise<void>
   /** Model for Claude subagents whose call names none; null = the session's model */
   getSubagentModel(): Promise<'haiku' | 'sonnet' | null>
   setSubagentModel(model: 'haiku' | 'sonnet' | null): Promise<void>

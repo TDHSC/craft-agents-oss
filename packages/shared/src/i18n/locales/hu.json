@@ -1152,6 +1152,8 @@
   "settings.about.updateReady": "A frissítés készen áll",
   "settings.about.version": "Verzió",
   "settings.ai.addConnection": "+ Kapcsolat hozzáadása",
+  "settings.ai.autoContinueAfterLimitReset": "Folytatás a korlát visszaállításakor",
+  "settings.ai.autoContinueAfterLimitResetDesc": "Ha egy modell kvótája elfogy, és a hibaüzenet megadja a visszaállítás idejét, a kör automatikusan folytatódik ekkor. Csak az általad indított munkamenetekben, és legfeljebb 3-szor 5 percen belül. Ez a kvótádat használja, amikor nem vagy jelen.",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

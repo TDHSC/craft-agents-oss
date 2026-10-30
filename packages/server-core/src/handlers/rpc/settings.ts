@@ -39,6 +39,8 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.settings.SET_DEFAULT_THINKING_LEVEL,
   RPC_CHANNELS.settings.GET_AUTO_COMPACT_WINDOW,
   RPC_CHANNELS.settings.SET_AUTO_COMPACT_WINDOW,
+  RPC_CHANNELS.settings.GET_AUTO_CONTINUE_AFTER_LIMIT_RESET,
+  RPC_CHANNELS.settings.SET_AUTO_CONTINUE_AFTER_LIMIT_RESET,
   RPC_CHANNELS.settings.GET_SUBAGENT_MODEL,
   RPC_CHANNELS.settings.SET_SUBAGENT_MODEL,
   RPC_CHANNELS.tools.GET_BROWSER_TOOL_ENABLED,
@@ -83,6 +85,17 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
     }
     const { setAutoCompactWindow } = await import('@craft-agent/shared/config/storage')
     setAutoCompactWindow(tokens)
+  })
+
+  // Continue a rate-limited turn once the provider's quota resets (default off)
+  server.handle(RPC_CHANNELS.settings.GET_AUTO_CONTINUE_AFTER_LIMIT_RESET, async () => {
+    const { getAutoContinueAfterLimitReset } = await import('@craft-agent/shared/config/storage')
+    return getAutoContinueAfterLimitReset()
+  })
+
+  server.handle(RPC_CHANNELS.settings.SET_AUTO_CONTINUE_AFTER_LIMIT_RESET, async (_ctx, enabled: boolean) => {
+    const { setAutoContinueAfterLimitReset } = await import('@craft-agent/shared/config/storage')
+    setAutoContinueAfterLimitReset(enabled)
   })
 
   // Default model for Claude subagents; null = the session's model.

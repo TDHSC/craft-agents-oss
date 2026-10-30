@@ -223,6 +223,8 @@ export const RPC_CHANNELS = {
     SET_DEFAULT_THINKING_LEVEL: 'settings:setDefaultThinkingLevel',
     GET_AUTO_COMPACT_WINDOW: 'settings:getAutoCompactWindow',
     SET_AUTO_COMPACT_WINDOW: 'settings:setAutoCompactWindow',
+    GET_AUTO_CONTINUE_AFTER_LIMIT_RESET: 'settings:getAutoContinueAfterLimitReset',
+    SET_AUTO_CONTINUE_AFTER_LIMIT_RESET: 'settings:setAutoContinueAfterLimitReset',
     GET_SUBAGENT_MODEL: 'settings:getSubagentModel',
     SET_SUBAGENT_MODEL: 'settings:setSubagentModel',
     GET_NETWORK_PROXY: 'settings:getNetworkProxy',

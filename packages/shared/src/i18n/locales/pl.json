@@ -1162,6 +1162,8 @@
   "settings.about.updateReady": "Aktualizacja gotowa",
   "settings.about.version": "Wersja",
   "settings.ai.addConnection": "+ Dodaj połączenie",
+  "settings.ai.autoContinueAfterLimitReset": "Kontynuuj po zresetowaniu limitu",
+  "settings.ai.autoContinueAfterLimitResetDesc": "Gdy limit modelu zostanie wyczerpany, a błąd podaje czas jego zresetowania, tura jest automatycznie kontynuowana o tej porze. Dotyczy tylko sesji uruchomionych przez Ciebie, maksymalnie 3 razy w ciągu 5 minut. Zużywa Twój limit, gdy Cię nie ma.",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

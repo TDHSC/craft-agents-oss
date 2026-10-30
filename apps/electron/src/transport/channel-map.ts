@@ -173,6 +173,8 @@ export const CHANNEL_MAP = {
   setDefaultThinkingLevel: invoke(RPC_CHANNELS.settings.SET_DEFAULT_THINKING_LEVEL),
   getAutoCompactWindow: invoke(RPC_CHANNELS.settings.GET_AUTO_COMPACT_WINDOW),
   setAutoCompactWindow: invoke(RPC_CHANNELS.settings.SET_AUTO_COMPACT_WINDOW),
+  getAutoContinueAfterLimitReset: invoke(RPC_CHANNELS.settings.GET_AUTO_CONTINUE_AFTER_LIMIT_RESET),
+  setAutoContinueAfterLimitReset: invoke(RPC_CHANNELS.settings.SET_AUTO_CONTINUE_AFTER_LIMIT_RESET),
   getSubagentModel: invoke(RPC_CHANNELS.settings.GET_SUBAGENT_MODEL),
   setSubagentModel: invoke(RPC_CHANNELS.settings.SET_SUBAGENT_MODEL),
   getNetworkProxySettings: invoke(RPC_CHANNELS.settings.GET_NETWORK_PROXY),

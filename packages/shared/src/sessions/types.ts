@@ -65,6 +65,8 @@ export const SESSION_PERSISTENT_FIELDS = [
   // Kanban: task/subtask hierarchy + board column
   'parentSessionId',
   'kanbanColumn',
+  // Auto-continue: `craft run` sessions are never continued; `autoContinueAt` is a pending rate-limit reset
+  'unattended', 'autoContinueAt',
   // Tasks Conductor: link a session back to the task spec / run / DAG node that owns it
   'taskSlug',
   'taskRunId',
@@ -249,6 +251,10 @@ export interface SessionConfig {
   taskNodeCount?: number;
   /** Tasks Conductor: generate-time draft orchestrator. Hidden from the board until adopted (promoted) by createTask. */
   taskDraft?: boolean;
+  /** Nobody answers prompts in this session (`craft run`): never auto-continued. See `isAttendedSession`. */
+  unattended?: boolean;
+  /** Epoch ms at which a rate-limited turn is continued automatically (setting `autoContinueAfterLimitReset`). */
+  autoContinueAt?: number;
 }
 
 /**
@@ -370,6 +376,10 @@ export interface SessionHeader {
   taskNodeCount?: number;
   /** Tasks Conductor: generate-time draft orchestrator. Hidden from the board until adopted (promoted) by createTask. */
   taskDraft?: boolean;
+  /** Nobody answers prompts in this session (`craft run`): never auto-continued. See `isAttendedSession`. */
+  unattended?: boolean;
+  /** Epoch ms at which a rate-limited turn is continued automatically (setting `autoContinueAfterLimitReset`). */
+  autoContinueAt?: number;
   // Pre-computed fields for fast list loading
   /** Number of messages in session */
   messageCount: number;

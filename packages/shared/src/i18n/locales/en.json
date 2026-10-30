@@ -1152,6 +1152,8 @@
   "settings.about.updateReady": "Update ready",
   "settings.about.version": "Version",
   "settings.ai.addConnection": "+ Add Connection",
+  "settings.ai.autoContinueAfterLimitReset": "Continue after a rate limit resets",
+  "settings.ai.autoContinueAfterLimitResetDesc": "When a model's quota runs out and the error says when it resets, continue the turn automatically at that time. Only for sessions you started, and at most 3 times in 5 minutes. This uses your quota while you are away.",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

@@ -20,7 +20,7 @@ import {
   type BackendHostRuntimeContext,
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
-import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import { getAutoContinueAfterLimitReset, getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
@@ -91,6 +91,7 @@ import { resolveAuthEnvVars } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
 import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { redactBrowserPasswordFills } from '@craft-agent/shared/agent'
+import { parseRateLimitResetAt } from '@craft-agent/shared/agent/errors'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
@@ -930,8 +931,10 @@ interface ManagedSession {
   authRetryInProgress?: boolean
   // Whether this session is hidden from session list (e.g., mini edit sessions)
   hidden?: boolean
-  // Nobody answers prompts here (CLI runs); in memory only. See isAttendedSession.
+  // Nobody answers prompts here (CLI runs). See isAttendedSession.
   unattended?: boolean
+  // Epoch ms at which a rate-limited turn is continued automatically (`armAutoContinue`).
+  autoContinueAt?: number
   // Incremented by every Stop (cancelProcessing). A turn captures it when it starts: a risk-badge
   // prompt or a turn start that sees it change was stopped meanwhile.
   stopEpoch?: number
@@ -1254,6 +1257,14 @@ interface PendingDelta {
 
 /** The hidden notice `continueTurn` sends; the model sees one extra line per continue. */
 const CONTINUE_PROMPT = 'Continue where you left off.'
+
+/** Auto-continue waits this long past a parsed reset time, which is only as exact as the provider's text. */
+const AUTO_CONTINUE_MARGIN_MS = 5_000
+/** Largest delay `setTimeout` accepts; a reset further away is not scheduled. */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
+/** At most this many auto-continues per session within the window (the same cap T3 Code uses). */
+const AUTO_CONTINUE_MAX_RUNS = 3
+const AUTO_CONTINUE_WINDOW_MS = 5 * 60 * 1000
 
 /** Frame an app-generated message the agent receives as a user turn, so it is not mistaken for the user. */
 export function labelSystemNotice(text: string): string {
@@ -2554,6 +2565,8 @@ export class SessionManager implements ISessionManager {
 
       // Load existing sessions from disk
       this.loadSessionsFromDisk()
+
+      this.rearmAutoContinues()
 
       // Signal that initialization is complete — IPC handlers waiting on initGate will proceed
       this.initGate.markReady()
@@ -6566,6 +6579,8 @@ export class SessionManager implements ISessionManager {
       managed.autoRetryTimer = undefined
     }
     managed.autoRetryPending = undefined
+    this.clearAutoContinueTimer(sessionId)
+    this.autoContinueRuns.delete(sessionId)
 
     this.sessions.delete(sessionId)
 
@@ -6633,6 +6648,8 @@ export class SessionManager implements ISessionManager {
       return
     }
     if (!activationResend && !_isAuthRetry) managed.turnFromUser = !options?.hidden || options?.continueTrigger === 'user'
+    // A message from the user, or a continue, supersedes a pending auto-continue.
+    if (!options?.hidden || options.continueTrigger) this.cancelAutoContinue(managed)
 
     // Clear any pending plan execution state when a new user message is sent.
     // The explicit /compact turn immediately after "Accept & Compact" is the
@@ -8853,6 +8870,74 @@ export class SessionManager implements ISessionManager {
     return this.wakeIdleSessionWithNotice(sessionId, CONTINUE_PROMPT, { continueTrigger: trigger })
   }
 
+  /** Setting check for auto-continue after a quota reset (a seam for tests). */
+  private autoContinueAfterLimitReset(): boolean {
+    return getAutoContinueAfterLimitReset()
+  }
+
+  private readonly autoContinueTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** When each session was last auto-continued (the loop guard); in memory, so a restart resets it. */
+  private readonly autoContinueRuns = new Map<string, number[]>()
+
+  /** Schedule `fireAutoContinue` for `managed.autoContinueAt` (due now when already past). */
+  private armAutoContinue(managed: ManagedSession): void {
+    this.clearAutoContinueTimer(managed.id)
+    if (managed.autoContinueAt === undefined) return
+    const delay = Math.max(0, managed.autoContinueAt - Date.now())
+    if (delay > MAX_TIMER_DELAY_MS) return
+    const timer = setTimeout(() => {
+      this.autoContinueTimers.delete(managed.id)
+      void this.fireAutoContinue(managed.id)
+    }, delay)
+    timer.unref?.()
+    this.autoContinueTimers.set(managed.id, timer)
+  }
+
+  /** At startup: re-arm the pending auto-continues the session headers carry (due ones fire at once). */
+  private rearmAutoContinues(): void {
+    for (const managed of this.sessions.values()) {
+      if (managed.autoContinueAt !== undefined) this.armAutoContinue(managed)
+    }
+  }
+
+  private clearAutoContinueTimer(sessionId: string): void {
+    const timer = this.autoContinueTimers.get(sessionId)
+    if (timer) clearTimeout(timer)
+    this.autoContinueTimers.delete(sessionId)
+  }
+
+  /** Drop a pending auto-continue: the user moved on, or it is about to run. */
+  private cancelAutoContinue(managed: ManagedSession): void {
+    this.clearAutoContinueTimer(managed.id)
+    managed.autoContinueAt = undefined
+  }
+
+  /**
+   * Continue a session on its own once its quota has reset. Checked when it fires, not when it is
+   * armed: the toggle is still on, the session is attended (a task run is re-dispatched in a new
+   * child after a restart, so continuing the old one would run the step twice), not archived,
+   * idle and still stopped (`getResumableStop`), and under the loop cap.
+   */
+  private async fireAutoContinue(sessionId: string): Promise<boolean> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return false
+    this.cancelAutoContinue(managed)
+    if (!this.autoContinueAfterLimitReset() || !isAttendedSession(managed) || managed.isArchived || managed.isProcessing) return false
+
+    const now = Date.now()
+    const runs = (this.autoContinueRuns.get(sessionId) ?? []).filter(at => now - at < AUTO_CONTINUE_WINDOW_MS)
+    if (runs.length >= AUTO_CONTINUE_MAX_RUNS) {
+      sessionLog.warn(`Auto-continue skipped for ${sessionId}: ${runs.length} runs in the last ${AUTO_CONTINUE_WINDOW_MS / 60_000} minutes`)
+      return false
+    }
+
+    // Counted before the turn runs, so a continue that fails at once still counts toward the cap.
+    this.autoContinueRuns.set(sessionId, [...runs, now])
+    const started = await this.continueTurn(sessionId, 'auto')
+    if (started) sessionLog.info(`Auto-continued session ${sessionId}`)
+    return started
+  }
+
   /**
    * Generate an AI title for a session from the user's first message.
    * Uses the agent's generateTitle() method which handles provider-specific SDK calls.
@@ -9478,12 +9563,24 @@ export class SessionManager implements ISessionManager {
           break
         }
 
+        // A rate limit that says when it ends: show the time, and continue then when the user opted in.
+        const resetAt = event.error.code === 'rate_limited'
+          ? parseRateLimitResetAt(event.error.originalError ?? event.error.message ?? '', Date.now())
+          : undefined
+        const errorText = resetAt !== undefined
+          ? `${event.error.message} Resets at ${new Date(resetAt).toLocaleString()}.`
+          : event.error.message
+        if (resetAt !== undefined && this.autoContinueAfterLimitReset() && isAttendedSession(managed)) {
+          managed.autoContinueAt = resetAt + AUTO_CONTINUE_MARGIN_MS
+          this.armAutoContinue(managed)
+        }
+
         // Build rich error message with all diagnostic fields for persistence and UI display
         const typedErrorMessage: Message = {
           id: generateMessageId(),
           role: 'error',
           // Combine title and message for content display (handles undefined gracefully)
-          content: [event.error.title, event.error.message].filter(Boolean).join(': ') || 'An error occurred',
+          content: [event.error.title, errorText].filter(Boolean).join(': ') || 'An error occurred',
           timestamp: this.monotonic(),
           // Rich error fields for diagnostics and retry functionality
           errorCode: event.error.code,
@@ -9491,6 +9588,7 @@ export class SessionManager implements ISessionManager {
           errorDetails: event.error.details,
           errorOriginal: event.error.originalError,
           errorCanRetry: event.error.canRetry,
+          ...(resetAt !== undefined ? { errorResetAt: resetAt } : {}),
         }
         managed.messages.push(typedErrorMessage)
         // Send typed_error event with full structure for renderer to handle
@@ -9500,7 +9598,7 @@ export class SessionManager implements ISessionManager {
           error: {
             code: event.error.code,
             title: event.error.title,
-            message: event.error.message,
+            message: errorText,
             actions: event.error.actions,
             canRetry: event.error.canRetry,
             details: event.error.details,
@@ -10569,6 +10667,9 @@ export class SessionManager implements ISessionManager {
     }
     this.deltaFlushTimers.clear()
     this.pendingDeltas.clear()
+
+    for (const timer of this.autoContinueTimers.values()) clearTimeout(timer)
+    this.autoContinueTimers.clear()
 
     // Clear pending credential resolvers (they won't be resolved, but prevents memory leak)
     this.pendingCredentialResolvers.clear()

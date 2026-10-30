@@ -8,6 +8,7 @@ const api = (): Api => ({
   getExtendedPromptCache: async () => false,
   getEnable1MContext: async () => true,
   getAutoCompactWindow: async () => 400_000,
+  getAutoContinueAfterLimitReset: async () => true,
   getSubagentModel: async () => null,
   getRtkEnabled: async () => false,
   getRtkStatus: async () => ({ installed: false, version: null, path: null, outdated: false, minSafeVersion: '1.0.0', foundPath: null, updateCommand: '' }),
@@ -27,7 +28,9 @@ describe('initial AI settings snapshot', () => {
     await Promise.resolve()
     expect(resolved).toBe(false)
     releaseHealth({ healthy: true, issues: [] })
-    expect((await loading).enable1M).toBe(true)
+    const settings = await loading
+    expect(settings.enable1M).toBe(true)
+    expect(settings.autoContinueAfterLimitReset).toBe(true)
   })
 
   it('does not serialize independent settings behind a slow workspace lookup', async () => {

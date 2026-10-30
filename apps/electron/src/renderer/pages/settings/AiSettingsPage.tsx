@@ -894,6 +894,7 @@ export default function AiSettingsPage() {
   const [defaultThinking, setDefaultThinking] = useState<ThinkingLevel>(DEFAULT_THINKING_LEVEL)
   const [extendedPromptCache, setExtendedPromptCache] = useState(false)
   const [enable1MContext, setEnable1MContext] = useState(false)
+  const [autoContinueAfterLimitReset, setAutoContinueAfterLimitReset] = useState(false)
   // Claude auto-compact window (null = model default) and default subagent model (null = session's)
   const [autoCompactWindow, setAutoCompactWindowValue] = useState<number | null>(null)
   const [autoCompactCustom, setAutoCompactCustom] = useState(false)
@@ -948,6 +949,7 @@ export default function AiSettingsPage() {
       setDefaultThinking(settings.thinking)
       setExtendedPromptCache(settings.extendedCache)
       setEnable1MContext(settings.enable1M)
+      setAutoContinueAfterLimitReset(settings.autoContinueAfterLimitReset)
       setAutoCompactWindowValue(settings.autoCompactWindow)
       setAutoCompactCustom(settings.autoCompactWindow !== null && !AUTO_COMPACT_PRESETS.includes(settings.autoCompactWindow))
       setAutoCompactDraft(settings.autoCompactWindow !== null ? String(settings.autoCompactWindow) : '')
@@ -1256,6 +1258,11 @@ export default function AiSettingsPage() {
   const handleEnable1MContextChange = useCallback(async (enabled: boolean) => {
     setEnable1MContext(enabled)
     await window.electronAPI?.setEnable1MContext(enabled)
+  }, [])
+
+  const handleAutoContinueAfterLimitResetChange = useCallback(async (enabled: boolean) => {
+    setAutoContinueAfterLimitReset(enabled)
+    await window.electronAPI?.setAutoContinueAfterLimitReset(enabled)
   }, [])
 
   const saveAutoCompactWindow = useCallback(async (tokens: number | null) => {
@@ -1736,6 +1743,12 @@ export default function AiSettingsPage() {
               { value: 'haiku', label: 'Haiku', description: t("settings.ai.subagentModelHaikuDesc") },
             ]}
             menuWidth={300}
+          />
+          <SettingsToggle
+            label={t("settings.ai.autoContinueAfterLimitReset")}
+            description={t("settings.ai.autoContinueAfterLimitResetDesc")}
+            checked={autoContinueAfterLimitReset}
+            onCheckedChange={handleAutoContinueAfterLimitResetChange}
           />
           <SettingsToggle
             label={t("settings.ai.extendedPromptCache")}

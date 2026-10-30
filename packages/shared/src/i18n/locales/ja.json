@@ -1152,6 +1152,8 @@
   "settings.about.updateReady": "アップデート準備完了",
   "settings.about.version": "バージョン",
   "settings.ai.addConnection": "+ 接続を追加",
+  "settings.ai.autoContinueAfterLimitReset": "制限のリセット後に続行",
+  "settings.ai.autoContinueAfterLimitResetDesc": "モデルのクォータが尽き、エラーにリセット時刻が示されている場合、その時刻にターンを自動で続行します。自分で開始したセッションのみが対象で、5分間に最大3回までです。不在中もクォータを消費します。",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

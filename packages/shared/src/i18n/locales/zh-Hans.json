@@ -1152,6 +1152,8 @@
   "settings.about.updateReady": "更新就绪",
   "settings.about.version": "版本",
   "settings.ai.addConnection": "+ 添加连接",
+  "settings.ai.autoContinueAfterLimitReset": "额度重置后自动继续",
+  "settings.ai.autoContinueAfterLimitResetDesc": "模型额度用尽且报错中给出了重置时间时，在该时间自动继续这一轮。仅限你自己发起的会话，5 分钟内最多 3 次。你不在时也会消耗额度。",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

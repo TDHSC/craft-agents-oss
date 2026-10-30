@@ -1152,6 +1152,8 @@
   "settings.about.updateReady": "Actualización lista",
   "settings.about.version": "Versión",
   "settings.ai.addConnection": "+ Añadir conexión",
+  "settings.ai.autoContinueAfterLimitReset": "Continuar al restablecerse el límite",
+  "settings.ai.autoContinueAfterLimitResetDesc": "Cuando se agota la cuota de un modelo y el error indica cuándo se restablece, el turno continúa automáticamente en ese momento. Solo en sesiones iniciadas por ti y como máximo 3 veces en 5 minutos. Consume tu cuota aunque no estés presente.",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",

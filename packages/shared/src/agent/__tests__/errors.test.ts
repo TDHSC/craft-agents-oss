@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { createAgentError, parseError } from '../errors.ts'
+import { createAgentError, parseError, parseRateLimitResetAt } from '../errors.ts'
 
 describe('parseError proxy interception handling', () => {
   it('maps interceptor proxy marker message to proxy_error', () => {
@@ -83,5 +83,38 @@ describe('rate limit and truncation text', () => {
     expect(error.title).toBe('Reply Cut Off')
     expect(error.canRetry).toBe(true)
     expect(error.actions.some(a => a.action === 'retry')).toBe(true)
+  })
+})
+
+describe('parseRateLimitResetAt', () => {
+  const NOW = 1_800_000_000_000
+
+  it('reads the Antigravity quota text', () => {
+    const text = '429 Individual quota reached for this model. Resets in 40h1m10s'
+    expect(parseRateLimitResetAt(text, NOW)).toBe(NOW + (40 * 3600 + 1 * 60 + 10) * 1000)
+  })
+
+  it('reads "try again in" with seconds, minutes and fractions', () => {
+    expect(parseRateLimitResetAt('Rate limit reached. Please try again in 20s.', NOW)).toBe(NOW + 20_000)
+    expect(parseRateLimitResetAt('Please try again in 5 minutes', NOW)).toBe(NOW + 300_000)
+    expect(parseRateLimitResetAt('Please try again in 6.4s', NOW)).toBe(NOW + 6_400)
+    expect(parseRateLimitResetAt('try again in 350ms', NOW)).toBe(NOW + 350)
+    expect(parseRateLimitResetAt('Try again in 2 hours 5 minutes.', NOW)).toBe(NOW + (2 * 3600 + 5 * 60) * 1000)
+  })
+
+  it('reads "retry after" in seconds, with a unit or as a bare Retry-After value', () => {
+    expect(parseRateLimitResetAt('retry after 30 seconds', NOW)).toBe(NOW + 30_000)
+    expect(parseRateLimitResetAt('429 Too Many Requests (Retry-After: 45)', NOW)).toBe(NOW + 45_000)
+  })
+
+  it('reads an ISO timestamp after "reset"', () => {
+    expect(parseRateLimitResetAt('Quota exhausted, resets at 2026-11-01T08:30:00Z', NOW)).toBe(Date.parse('2026-11-01T08:30:00Z'))
+    expect(parseRateLimitResetAt('quota will reset: 2026-11-01T08:30:00+08:00', NOW)).toBe(Date.parse('2026-11-01T08:30:00+08:00'))
+  })
+
+  it('returns undefined for texts without a reset time', () => {
+    for (const text of ['', '429 Too many requests', 'Rate limit reached', 'resets in a while', 'try again in 5 fortnights', 'created 2026-11-01T08:30:00Z']) {
+      expect(parseRateLimitResetAt(text, NOW)).toBeUndefined()
+    }
   })
 })

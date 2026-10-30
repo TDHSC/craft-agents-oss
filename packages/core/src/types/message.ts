@@ -307,6 +307,8 @@ export interface Message {
   errorDetails?: string[];
   errorOriginal?: string;
   errorCanRetry?: boolean;
+  /** Rate-limit errors: when the quota resets (epoch ms), parsed from the provider text. */
+  errorResetAt?: number;
   errorActions?: Array<{
     key: string;
     label: string;
@@ -386,6 +388,8 @@ export interface StoredMessage {
   errorDetails?: string[];
   errorOriginal?: string;
   errorCanRetry?: boolean;
+  /** Rate-limit errors: when the quota resets (epoch ms), parsed from the provider text. */
+  errorResetAt?: number;
   errorActions?: Array<{
     key: string;
     label: string;

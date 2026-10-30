@@ -2,22 +2,23 @@ import type { ElectronAPI } from '../../../shared/types'
 
 type AiSettingsApi = Pick<ElectronAPI,
   'getWorkspaces' | 'getDefaultThinkingLevel' | 'getExtendedPromptCache' |
-  'getEnable1MContext' | 'getAutoCompactWindow' | 'getSubagentModel' | 'getRtkEnabled' | 'getRtkStatus' | 'getCredentialHealth'>
+  'getEnable1MContext' | 'getAutoCompactWindow' | 'getAutoContinueAfterLimitReset' | 'getSubagentModel' | 'getRtkEnabled' | 'getRtkStatus' | 'getCredentialHealth'>
 
 /** Load the initial page as one snapshot, including the connection list and health banner.
  * Sequential RPCs used to insert whole sections above already-visible controls. */
 export async function loadAiSettings(api: AiSettingsApi, refreshConnections: () => Promise<void>) {
-  const [workspaces, thinking, extendedCache, enable1M, autoCompactWindow, subagentModel, rtkEnabled, rtkStatus, health] = await Promise.all([
+  const [workspaces, thinking, extendedCache, enable1M, autoCompactWindow, autoContinueAfterLimitReset, subagentModel, rtkEnabled, rtkStatus, health] = await Promise.all([
     api.getWorkspaces(),
     api.getDefaultThinkingLevel(),
     api.getExtendedPromptCache(),
     api.getEnable1MContext(),
     api.getAutoCompactWindow(),
+    api.getAutoContinueAfterLimitReset(),
     api.getSubagentModel(),
     api.getRtkEnabled(),
     api.getRtkStatus(),
     api.getCredentialHealth(),
     refreshConnections(),
   ])
-  return { workspaces, thinking, extendedCache, enable1M, autoCompactWindow, subagentModel, rtkEnabled, rtkStatus, health }
+  return { workspaces, thinking, extendedCache, enable1M, autoCompactWindow, autoContinueAfterLimitReset, subagentModel, rtkEnabled, rtkStatus, health }
 }

@@ -238,6 +238,14 @@ The model list itself is never replaced, so `userDefined3Tier` lists stay exactl
   - guards: archived, processing, unattended, loop limit;
   - re-armed at startup from a header.
 
+**Deviations (as implemented).**
+- `errorResetAt` needed only the two message types: `messageToStored` / `storedToMessage` copy fields with a rest-spread, so there is no field list to extend.
+- The two RPC channels live in the `settings` group next to `autoCompactWindow`, not in `caching`, which is about prompt cache and context.
+- A parsed reset time gets a 5 s margin (`AUTO_CONTINUE_MARGIN_MS`), since it is only as exact as the provider's text, and a reset further away than `setTimeout` can wait (2^31 - 1 ms) is not scheduled. Timers are also cleared on session delete and in `cleanup()`.
+- The "Resets at <local time>" text is added to the error message sent to the renderer as well as to the stored content, so the live card and the reloaded one read the same.
+- The startup re-arm loop is its own method (`rearmAutoContinues`) so a test can call it without a full `initialize()`.
+- The tests record timers by replacing `setTimeout` instead of using fake timers: the Bun in this environment (1.3.1) has no `jest.advanceTimersByTime`, which is also why some existing Pi adapter tests fail here. The reset-time test uses the text form quoted in the design ("Individual quota reached … Resets in 40h1m10s"); session files under `~/.craft-agent` were not read to copy the exact text.
+
 **Commit:** `feat(sessions): optionally continue a rate-limited turn when the quota resets`.
 
 ## Step 7: auto-continue after an app restart
