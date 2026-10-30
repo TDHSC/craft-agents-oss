@@ -20,7 +20,7 @@ import {
   type BackendHostRuntimeContext,
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
-import { getAutoContinueAfterLimitReset, getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import { getAutoContinueAfterLimitReset, getAutoContinueAfterRestart, getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
@@ -1265,6 +1265,8 @@ const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
 /** At most this many auto-continues per session within the window (the same cap T3 Code uses). */
 const AUTO_CONTINUE_MAX_RUNS = 3
 const AUTO_CONTINUE_WINDOW_MS = 5 * 60 * 1000
+/** After a restart, only sessions active within this long are considered for auto-continue. */
+const AUTO_CONTINUE_RESTART_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Frame an app-generated message the agent receives as a user turn, so it is not mistaken for the user. */
 export function labelSystemNotice(text: string): string {
@@ -2570,6 +2572,11 @@ export class SessionManager implements ISessionManager {
 
       // Signal that initialization is complete — IPC handlers waiting on initGate will proceed
       this.initGate.markReady()
+
+      // Detached: loading a candidate's messages must not hold up startup
+      void this.continueCutOffTurns().catch(error => {
+        sessionLog.warn('Auto-continue after restart failed:', error)
+      })
     } catch (error) {
       this.initGate.markFailed(error)
       throw error
@@ -8875,6 +8882,11 @@ export class SessionManager implements ISessionManager {
     return getAutoContinueAfterLimitReset()
   }
 
+  /** Setting check for auto-continue after an app restart (a seam for tests). */
+  private autoContinueAfterRestart(): boolean {
+    return getAutoContinueAfterRestart()
+  }
+
   private readonly autoContinueTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** When each session was last auto-continued (the loop guard); in memory, so a restart resets it. */
   private readonly autoContinueRuns = new Map<string, number[]>()
@@ -8913,16 +8925,37 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Continue a session on its own once its quota has reset. Checked when it fires, not when it is
-   * armed: the toggle is still on, the session is attended (a task run is re-dispatched in a new
+   * At startup, continue the turns an app exit cut off (setting `autoContinueAfterRestart`).
+   * Candidates come from the session headers alone: last message not an assistant reply and last
+   * activity within a day, so only those load their messages. A session is continued only when its
+   * last visible message is the user's or a tool's (`cut_off`), through the same guards as the
+   * quota-reset path. One whose queued messages replay on load is left to that replay.
+   */
+  private async continueCutOffTurns(): Promise<void> {
+    if (!this.autoContinueAfterRestart()) return
+    const since = Date.now() - AUTO_CONTINUE_RESTART_WINDOW_MS
+    for (const managed of [...this.sessions.values()]) {
+      if (managed.lastMessageRole === 'assistant' || managed.lastMessageAt < since) continue
+      if (!isAttendedSession(managed) || managed.isArchived) continue
+      await this.ensureMessagesLoaded(managed)
+      if (managed.messageQueue.length > 0) continue
+      if (getResumableStop(managed.messages)?.reason !== 'cut_off') continue
+      await this.fireAutoContinue(managed.id, 'restart')
+    }
+  }
+
+  /**
+   * Continue a session on its own, after its quota reset or after an app restart (`source` picks
+   * the setting). Checked when it fires, not when it is armed: the setting is still on, the session is attended (a task run is re-dispatched in a new
    * child after a restart, so continuing the old one would run the step twice), not archived,
    * idle and still stopped (`getResumableStop`), and under the loop cap.
    */
-  private async fireAutoContinue(sessionId: string): Promise<boolean> {
+  private async fireAutoContinue(sessionId: string, source: 'limitReset' | 'restart' = 'limitReset'): Promise<boolean> {
     const managed = this.sessions.get(sessionId)
     if (!managed) return false
     this.cancelAutoContinue(managed)
-    if (!this.autoContinueAfterLimitReset() || !isAttendedSession(managed) || managed.isArchived || managed.isProcessing) return false
+    const enabled = source === 'restart' ? this.autoContinueAfterRestart() : this.autoContinueAfterLimitReset()
+    if (!enabled || !isAttendedSession(managed) || managed.isArchived || managed.isProcessing) return false
 
     const now = Date.now()
     const runs = (this.autoContinueRuns.get(sessionId) ?? []).filter(at => now - at < AUTO_CONTINUE_WINDOW_MS)

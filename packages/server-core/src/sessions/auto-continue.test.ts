@@ -6,7 +6,8 @@ import { SessionManager, createManagedSession } from './SessionManager.ts'
 
 // Auto-continue at the quota reset: a rate-limit error that says when it ends arms one timer per
 // session (setting `autoContinueAfterLimitReset`, off by default); firing runs the guards and then
-// `continueTurn(…, 'auto')`.
+// `continueTurn(…, 'auto')`. After a restart (`autoContinueAfterRestart`, also off by default) the
+// same guards continue the turns an app exit cut off.
 //
 // Timers are recorded instead of run: this Bun has no `jest.advanceTimersByTime`.
 interface FakeTimer { fn: () => void; delay: number; cleared: boolean; fired: boolean; unref: () => void }
@@ -19,6 +20,7 @@ describe('auto-continue at the quota reset', () => {
   let sm: SessionManager
   let sent: Array<{ message: string; options: any }>
   let toggle: boolean
+  let restartToggle: boolean
   const NOW = 1_800_000_000_000
 
   beforeEach(() => {
@@ -34,9 +36,11 @@ describe('auto-continue at the quota reset', () => {
     sm = new SessionManager()
     sent = []
     toggle = true
+    restartToggle = true
     ;(sm as any).sendEvent = () => {}
     ;(sm as any).persistSession = () => {}
     ;(sm as any).autoContinueAfterLimitReset = () => toggle
+    ;(sm as any).autoContinueAfterRestart = () => restartToggle
     ;(sm as any).sendMessage = mock(async (_id: string, message: string, _a: unknown, _s: unknown, options: unknown) => {
       sent.push({ message, options })
     })
@@ -233,6 +237,89 @@ describe('auto-continue at the quota reset', () => {
       buildSession({ autoContinueAt: Date.now() + 2 ** 31 + 1_000 })
       ;(sm as any).rearmAutoContinues()
       expect(live()).toHaveLength(0)
+    })
+  })
+
+  describe('after an app restart', () => {
+    const cutOff = [msg('u1', 'user'), msg('a1', 'assistant'), msg('u2', 'user')]
+    const restart = async () => { await (sm as any).continueCutOffTurns() }
+
+    it('continues a turn cut off with the last message from the user or a tool', async () => {
+      buildSession({ lastMessageRole: 'user' }, cutOff, 'a')
+      buildSession({ lastMessageRole: 'tool' }, [msg('u1', 'user'), msg('t1', 'tool')], 'b')
+      await restart()
+
+      expect(sent).toHaveLength(2)
+      expect(sent.every(s => s.options.continueTrigger === 'auto' && s.options.hidden === true)).toBe(true)
+    })
+
+    it('continues only a cut-off turn, not other stops or finished ones', async () => {
+      buildSession({ lastMessageRole: 'assistant' }, [msg('u1', 'user'), msg('a1', 'assistant')], 'replied')
+      // The header says error, but the loaded messages decide: a typed error is not a cut-off turn
+      buildSession({ lastMessageRole: 'error' }, [msg('u1', 'user'), rateLimited()], 'errored')
+      buildSession({}, [msg('u1', 'user'), msg('i1', 'info', { statusType: 'interrupted' })], 'stopped')
+      buildSession({ lastMessageRole: 'plan' }, [msg('u1', 'user'), msg('p1', 'plan')], 'plan')
+      await restart()
+      expect(sent).toHaveLength(0)
+    })
+
+    it('does not load the messages of a session whose header says it replied', async () => {
+      const managed = buildSession({ lastMessageRole: 'assistant', messagesLoaded: false }, cutOff, 'replied')
+      const loaded = mock(async () => {})
+      ;(sm as any).ensureMessagesLoaded = loaded
+      await restart()
+      expect(loaded).not.toHaveBeenCalled()
+      expect(managed.messagesLoaded).toBe(false)
+    })
+
+    it('ignores sessions outside the 24 hour window', async () => {
+      buildSession({ lastMessageRole: 'user', lastMessageAt: Date.now() - 25 * 3600 * 1000 }, cutOff, 'old')
+      buildSession({ lastMessageRole: 'user', lastMessageAt: Date.now() - 23 * 3600 * 1000 }, cutOff, 'recent')
+      await restart()
+      expect(sent).toHaveLength(1)
+    })
+
+    it('leaves task, automation, hidden, unattended and archived sessions alone', async () => {
+      const header = { lastMessageRole: 'user' }
+      buildSession({ ...header, taskSlug: 'nightly' }, cutOff, 'task')
+      buildSession({ ...header, taskRunId: 'run-1' }, cutOff, 'task-child')
+      buildSession({ ...header, triggeredBy: { automationName: 'daily' } }, cutOff, 'automation')
+      buildSession({ ...header, hidden: true }, cutOff, 'hidden')
+      buildSession({ ...header, unattended: true }, cutOff, 'unattended')
+      buildSession({ ...header, isArchived: true }, cutOff, 'archived')
+      await restart()
+      expect(sent).toHaveLength(0)
+    })
+
+    it('leaves a session whose queued messages replay to that replay', async () => {
+      const managed = buildSession({ lastMessageRole: 'user' }, [msg('u1', 'user'), msg('u2', 'user', { isQueued: true })], 'queued')
+      managed.messageQueue.push({ message: 'u2', messageId: 'u2', options: undefined } as never)
+      await restart()
+      expect(sent).toHaveLength(0)
+    })
+
+    it('does nothing while the setting is off', async () => {
+      restartToggle = false
+      buildSession({ lastMessageRole: 'user' }, cutOff)
+      await restart()
+      expect(sent).toHaveLength(0)
+    })
+
+    it('is a separate setting from the quota-reset one', async () => {
+      toggle = false
+      buildSession({ lastMessageRole: 'user' }, cutOff)
+      await restart()
+      expect(sent).toHaveLength(1)
+    })
+
+    it('skips a busy session and keeps to the three-in-five-minutes cap', async () => {
+      buildSession({ lastMessageRole: 'user', isProcessing: true }, cutOff, 'busy')
+      await restart()
+      expect(sent).toHaveLength(0)
+
+      buildSession({ lastMessageRole: 'user' }, cutOff, 'ok')
+      for (let i = 0; i < 5; i++) await restart()
+      expect(sent).toHaveLength(3)
     })
   })
 

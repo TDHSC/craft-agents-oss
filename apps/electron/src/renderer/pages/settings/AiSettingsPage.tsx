@@ -895,6 +895,7 @@ export default function AiSettingsPage() {
   const [extendedPromptCache, setExtendedPromptCache] = useState(false)
   const [enable1MContext, setEnable1MContext] = useState(false)
   const [autoContinueAfterLimitReset, setAutoContinueAfterLimitReset] = useState(false)
+  const [autoContinueAfterRestart, setAutoContinueAfterRestart] = useState(false)
   // Claude auto-compact window (null = model default) and default subagent model (null = session's)
   const [autoCompactWindow, setAutoCompactWindowValue] = useState<number | null>(null)
   const [autoCompactCustom, setAutoCompactCustom] = useState(false)
@@ -950,6 +951,7 @@ export default function AiSettingsPage() {
       setExtendedPromptCache(settings.extendedCache)
       setEnable1MContext(settings.enable1M)
       setAutoContinueAfterLimitReset(settings.autoContinueAfterLimitReset)
+      setAutoContinueAfterRestart(settings.autoContinueAfterRestart)
       setAutoCompactWindowValue(settings.autoCompactWindow)
       setAutoCompactCustom(settings.autoCompactWindow !== null && !AUTO_COMPACT_PRESETS.includes(settings.autoCompactWindow))
       setAutoCompactDraft(settings.autoCompactWindow !== null ? String(settings.autoCompactWindow) : '')
@@ -1263,6 +1265,11 @@ export default function AiSettingsPage() {
   const handleAutoContinueAfterLimitResetChange = useCallback(async (enabled: boolean) => {
     setAutoContinueAfterLimitReset(enabled)
     await window.electronAPI?.setAutoContinueAfterLimitReset(enabled)
+  }, [])
+
+  const handleAutoContinueAfterRestartChange = useCallback(async (enabled: boolean) => {
+    setAutoContinueAfterRestart(enabled)
+    await window.electronAPI?.setAutoContinueAfterRestart(enabled)
   }, [])
 
   const saveAutoCompactWindow = useCallback(async (tokens: number | null) => {
@@ -1749,6 +1756,12 @@ export default function AiSettingsPage() {
             description={t("settings.ai.autoContinueAfterLimitResetDesc")}
             checked={autoContinueAfterLimitReset}
             onCheckedChange={handleAutoContinueAfterLimitResetChange}
+          />
+          <SettingsToggle
+            label={t("settings.ai.autoContinueAfterRestart")}
+            description={t("settings.ai.autoContinueAfterRestartDesc")}
+            checked={autoContinueAfterRestart}
+            onCheckedChange={handleAutoContinueAfterRestartChange}
           />
           <SettingsToggle
             label={t("settings.ai.extendedPromptCache")}

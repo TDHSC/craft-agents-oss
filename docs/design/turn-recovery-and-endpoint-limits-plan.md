@@ -263,6 +263,11 @@ The model list itself is never replaced, so `userDefined3Tier` lists stay exactl
 - task, automation and hidden sessions are excluded;
 - a session with a queued replay is not continued.
 
+**Deviations (as implemented).**
+- Running after the queued-message replay does not by itself prevent a double start: the replay is scheduled with `setImmediate` when a session's messages load, so it may not have started when the restart pass looks. The pass therefore skips any session whose `messageQueue` is non-empty after loading (`continueTurn` still refuses a session that is already processing).
+- The restart pass starts after `initGate.markReady()` and is detached, so loading candidates' messages never delays startup. It drops unattended and archived sessions before loading messages, then `fireAutoContinue(id, 'restart')` repeats the guards.
+- `fireAutoContinue` takes a `source` (`'limitReset'` or `'restart'`) that picks the setting; everything else is shared with step 6.
+
 **Commit:** `feat(sessions): optionally continue turns cut off by an app restart`.
 
 ## Step 8: docs and final check

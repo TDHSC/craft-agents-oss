@@ -89,6 +89,7 @@ export interface StoredConfig {
   enable1MContext?: boolean;  // Enable 1M context window for supported models (default: false — opt-in; requires Anthropic Tier 4+)
   autoCompactWindow?: number;  // Auto-compact when the context reaches this many tokens (100000–1000000), in Claude and Pi sessions. Unset: each SDK's default, near the model's full window (1M on Opus 5.5)
   autoContinueAfterLimitReset?: boolean;  // Continue a rate-limited turn when the provider's quota resets (default: false)
+  autoContinueAfterRestart?: boolean;  // After an app restart, continue turns the exit cut off (default: false)
   subagentModel?: SubagentModel;  // Claude: model for subagents whose call names none (never above the session's model). Unset: same as the session
   // Token optimization
   rtkEnabled?: boolean;  // Route Bash commands through rtk to compress tool output (default: false). https://github.com/rtk-ai/rtk
@@ -590,6 +591,22 @@ export function setAutoContinueAfterLimitReset(enabled: boolean): void {
   const config = loadStoredConfig();
   if (!config) return;
   config.autoContinueAfterLimitReset = enabled;
+  saveConfig(config);
+}
+
+/**
+ * Get whether turns an app exit cut off are continued automatically at the next start.
+ * Defaults to false: it spends the user's quota without them present.
+ */
+export function getAutoContinueAfterRestart(): boolean {
+  const config = loadStoredConfig();
+  return config?.autoContinueAfterRestart === true;
+}
+
+export function setAutoContinueAfterRestart(enabled: boolean): void {
+  const config = loadStoredConfig();
+  if (!config) return;
+  config.autoContinueAfterRestart = enabled;
   saveConfig(config);
 }
 

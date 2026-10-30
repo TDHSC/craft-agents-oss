@@ -225,6 +225,8 @@ export const RPC_CHANNELS = {
     SET_AUTO_COMPACT_WINDOW: 'settings:setAutoCompactWindow',
     GET_AUTO_CONTINUE_AFTER_LIMIT_RESET: 'settings:getAutoContinueAfterLimitReset',
     SET_AUTO_CONTINUE_AFTER_LIMIT_RESET: 'settings:setAutoContinueAfterLimitReset',
+    GET_AUTO_CONTINUE_AFTER_RESTART: 'settings:getAutoContinueAfterRestart',
+    SET_AUTO_CONTINUE_AFTER_RESTART: 'settings:setAutoContinueAfterRestart',
     GET_SUBAGENT_MODEL: 'settings:getSubagentModel',
     SET_SUBAGENT_MODEL: 'settings:setSubagentModel',
     GET_NETWORK_PROXY: 'settings:getNetworkProxy',

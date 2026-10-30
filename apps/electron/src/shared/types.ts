@@ -725,6 +725,8 @@ export interface ElectronAPI {
   setAutoCompactWindow(tokens: number | null): Promise<void>
   getAutoContinueAfterLimitReset(): Promise<boolean>
   setAutoContinueAfterLimitReset(enabled: boolean): Promise<void>
+  getAutoContinueAfterRestart(): Promise<boolean>
+  setAutoContinueAfterRestart(enabled: boolean): Promise<void>
   /** Model for Claude subagents whose call names none; null = the session's model */
   getSubagentModel(): Promise<'haiku' | 'sonnet' | null>
   setSubagentModel(model: 'haiku' | 'sonnet' | null): Promise<void>

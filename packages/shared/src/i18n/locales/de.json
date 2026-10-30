@@ -1154,6 +1154,8 @@
   "settings.ai.addConnection": "+ Verbindung hinzufügen",
   "settings.ai.autoContinueAfterLimitReset": "Nach Zurücksetzen des Limits fortsetzen",
   "settings.ai.autoContinueAfterLimitResetDesc": "Wenn das Kontingent eines Modells erschöpft ist und die Fehlermeldung den Zeitpunkt der Zurücksetzung nennt, wird der Durchlauf dann automatisch fortgesetzt. Nur für von dir gestartete Sitzungen und höchstens 3-mal in 5 Minuten. Das verbraucht dein Kontingent, auch wenn du nicht da bist.",
+  "settings.ai.autoContinueAfterRestart": "Nach einem Neustart fortsetzen",
+  "settings.ai.autoContinueAfterRestartDesc": "Beim Neustart der App werden Durchläufe fortgesetzt, die durch das Beenden unterbrochen wurden. Nur für von dir gestartete Sitzungen der letzten 24 Stunden und höchstens 3-mal in 5 Minuten. Das verbraucht dein Kontingent, auch wenn du nicht da bist.",
   "settings.ai.chatStarters.add": "Add Starter",
   "settings.ai.chatStarters.desc": "Custom starter prompts shown on the new chat screen. Up to 3 are displayed; extras are ignored.",
   "settings.ai.chatStarters.empty": "No custom starters — auto-generated prompts will be shown.",
