@@ -34,6 +34,9 @@ export interface CustomEndpointModelDefaults {
 export interface CustomEndpointModelOverrides {
   contextWindow?: number
   supportsImages?: boolean
+  /** Output cap for this model; wins over `customEndpoint.maxTokens`. */
+  maxTokens?: number
+  supportsThinking?: boolean
 }
 
 export interface CustomEndpointModelEntry extends CustomEndpointModelOverrides {
@@ -44,6 +47,8 @@ export type CustomEndpointModelConfig = string | {
   id: string
   contextWindow?: number
   supportsImages?: boolean
+  maxTokens?: number
+  supportsThinking?: boolean
 }
 
 /** Strip bare model IDs (remove pi/ prefix if present). */
@@ -67,6 +72,8 @@ export function normalizeCustomEndpointModelEntry(model: CustomEndpointModelConf
     id: stripPiPrefix(model.id),
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
+    ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
+    ...(model.supportsThinking !== undefined ? { supportsThinking: model.supportsThinking } : {}),
   }
 }
 
@@ -89,10 +96,17 @@ function resolveMaxTokens(configured: number | undefined): number {
  * at". Image support must be explicitly enabled either at the connection level
  * or per-model.
  *
- * `maxTokens` is the model's output cap. Pi also bounds compaction summaries by
- * it (`min(0.8 × reserveTokens, model.maxTokens)`), so the connection-level
- * `customEndpoint.maxTokens` override is what lets long-session summaries exceed
- * the default. See craft-agents-oss#1100.
+ * `reasoning` is on only for an explicit per-model `supportsThinking: true`
+ * (learned from the endpoint's `/models`, or set by the user). The rest of the
+ * app treats an undefined `supportsThinking` as true, but here that would send
+ * `reasoning_effort` to every existing endpoint, and gateways that reject unknown
+ * parameters would start failing. With `reasoning: false` the session thinking
+ * level is never sent, so the model thinks at its own default.
+ *
+ * `maxTokens` is the model's output cap: per-model, then the connection-level
+ * `customEndpoint.maxTokens`, then 8192. Pi also bounds compaction summaries by
+ * it (`min(0.8 × reserveTokens, model.maxTokens)`), so that override is what lets
+ * long-session summaries exceed the default. See craft-agents-oss#1100.
  *
  * For `openai-completions` endpoints we set `compat.supportsStore = false` so the
  * pi-ai driver omits the OpenAI-platform-specific `store` param entirely. Third-party
@@ -111,11 +125,11 @@ export function buildCustomEndpointModelDef(
   return {
     id,
     name: id,
-    reasoning: false,
+    reasoning: overrides?.supportsThinking === true,
     input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: overrides?.contextWindow ?? defaults?.contextWindow ?? DEFAULT_CUSTOM_ENDPOINT_CONTEXT_WINDOW,
-    maxTokens: resolveMaxTokens(defaults?.maxTokens),
+    maxTokens: resolveMaxTokens(overrides?.maxTokens ?? defaults?.maxTokens),
     ...(api === 'openai-completions' ? { compat: { supportsStore: false } } : {}),
   }
 }

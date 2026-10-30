@@ -141,7 +141,7 @@ interface InitMessage {
   branchFromSessionPath?: string;
   branchFromSdkTurnId?: string;
   customEndpoint?: CustomEndpointConfig;
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; maxTokens?: number; supportsThinking?: boolean }>;
   /** Compact once context reaches this many tokens (config.json `autoCompactWindow`). */
   autoCompactWindow?: number;
   piAuth?: { provider: string; credential: PiCredential };
@@ -155,7 +155,7 @@ interface RuntimeConfigUpdateMessage {
   authType?: string;
   baseUrl?: string;
   customEndpoint?: CustomEndpointConfig;
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; maxTokens?: number; supportsThinking?: boolean }>;
 }
 
 /** Messages from main process (stdin) */
@@ -504,10 +504,12 @@ function registerCustomEndpointModels(
 ): void {
   for (const m of models) {
     customEndpointModelIds.add(m.id);
-    if (m.contextWindow || m.supportsImages !== undefined) {
+    if (m.contextWindow || m.supportsImages !== undefined || m.maxTokens !== undefined || m.supportsThinking !== undefined) {
       customModelOverrides.set(m.id, {
         ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
         ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
+        ...(m.maxTokens !== undefined ? { maxTokens: m.maxTokens } : {}),
+        ...(m.supportsThinking !== undefined ? { supportsThinking: m.supportsThinking } : {}),
       });
     }
   }

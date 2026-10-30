@@ -33,7 +33,7 @@ export { AbortReason, type RecoveryMessage };
 import type { ModelProvider } from '../../config/models.ts';
 
 // Import LLM connection types for auth
-import type { CustomEndpointConfig, LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
+import type { CustomEndpointConfig, CustomModelOverrideEntry, LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
 export type { LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
 
 export interface BackendRuntimeUpdate {
@@ -44,7 +44,7 @@ export interface BackendRuntimeUpdate {
     baseUrl?: string;
     piAuthProvider?: string;
     customEndpoint?: CustomEndpointConfig;
-    customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+    customModels?: CustomModelOverrideEntry[];
     [key: string]: unknown;
   };
 }

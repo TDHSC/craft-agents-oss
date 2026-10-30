@@ -596,6 +596,38 @@ export function mergeModelEntries(
   return incoming.map(m => (typeof m === 'string' ? stored.get(m) ?? m : m));
 }
 
+/** Per-model overrides sent to the Pi subprocess for a custom endpoint. */
+export interface CustomModelOverrides {
+  contextWindow?: number;
+  supportsImages?: boolean;
+  maxTokens?: number;
+  /** Only an explicit `true` turns reasoning on; see `buildCustomEndpointModelDef`. */
+  supportsThinking?: boolean;
+}
+
+export type CustomModelOverrideEntry = string | ({ id: string } & CustomModelOverrides);
+
+/**
+ * Turn a connection's `models` into the wire shape sent to the Pi subprocess:
+ * a bare id, or `{ id, ...overrides }` when the entry carries any override.
+ * The single place that copies per-model fields, so a new one cannot be
+ * forgotten at one of the call sites (init payload, runtime update, signature).
+ */
+export function toCustomModelOverrides(
+  models: ReadonlyArray<ModelDefinition | string>,
+): CustomModelOverrideEntry[] {
+  return models.map(m => {
+    if (typeof m === 'string') return m;
+    const overrides: CustomModelOverrides = {
+      ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+      ...(typeof m.supportsImages === 'boolean' ? { supportsImages: m.supportsImages } : {}),
+      ...(m.maxTokens ? { maxTokens: m.maxTokens } : {}),
+      ...(typeof m.supportsThinking === 'boolean' ? { supportsThinking: m.supportsThinking } : {}),
+    };
+    return Object.keys(overrides).length > 0 ? { id: m.id, ...overrides } : m.id;
+  });
+}
+
 /**
  * Resolve whether a given model on a connection accepts image input.
  *

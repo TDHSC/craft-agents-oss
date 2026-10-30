@@ -33,6 +33,22 @@ describe('normalizeCustomEndpointModelEntry', () => {
     })
   })
 
+  it('preserves per-model maxTokens and supportsThinking', () => {
+    expect(normalizeCustomEndpointModelEntry({
+      id: 'pi/big-model',
+      maxTokens: 65_536,
+      supportsThinking: true,
+    })).toEqual({
+      id: 'big-model',
+      maxTokens: 65_536,
+      supportsThinking: true,
+    })
+    expect(normalizeCustomEndpointModelEntry({ id: 'pi/m', supportsThinking: false })).toEqual({
+      id: 'm',
+      supportsThinking: false,
+    })
+  })
+
   it('preserves context window and image support together', () => {
     expect(normalizeCustomEndpointModelEntry({
       id: 'pi/vision-model',
@@ -92,6 +108,26 @@ describe('buildCustomEndpointModelDef', () => {
     for (const maxTokens of [0, -1, 1.5, Number.NaN, '32768' as unknown as number]) {
       expect(buildCustomEndpointModelDef('my-model', { maxTokens }).maxTokens).toBe(DEFAULT_CUSTOM_ENDPOINT_MAX_TOKENS)
     }
+  })
+
+  it('orders the output cap: per-model, then connection-level, then the default', () => {
+    expect(buildCustomEndpointModelDef('m', { maxTokens: 32_768 }, { maxTokens: 65_536 }).maxTokens).toBe(65_536)
+    expect(buildCustomEndpointModelDef('m', { maxTokens: 32_768 }, {}).maxTokens).toBe(32_768)
+    expect(buildCustomEndpointModelDef('m', undefined, {}).maxTokens).toBe(DEFAULT_CUSTOM_ENDPOINT_MAX_TOKENS)
+  })
+
+  it('falls back when a per-model maxTokens is not a positive integer', () => {
+    expect(buildCustomEndpointModelDef('m', undefined, { maxTokens: 0 }).maxTokens).toBe(DEFAULT_CUSTOM_ENDPOINT_MAX_TOKENS)
+  })
+
+  // Reasoning would make Pi send `reasoning_effort`, which strict gateways reject, so
+  // an undefined `supportsThinking` (true elsewhere in the app) must stay off here.
+  it('turns reasoning on only for an explicit supportsThinking: true', () => {
+    expect(buildCustomEndpointModelDef('m').reasoning).toBe(false)
+    expect(buildCustomEndpointModelDef('m', undefined, {}).reasoning).toBe(false)
+    expect(buildCustomEndpointModelDef('m', undefined, { supportsThinking: false }).reasoning).toBe(false)
+    expect(buildCustomEndpointModelDef('m', undefined, { supportsThinking: true }).reasoning).toBe(true)
+    expect(buildCustomEndpointModelDef('m', undefined, { supportsThinking: 'yes' as unknown as boolean }).reasoning).toBe(false)
   })
 
   // Regression: craft-agents-oss#1022 — strict OpenAI-compatible gateways 400 on the

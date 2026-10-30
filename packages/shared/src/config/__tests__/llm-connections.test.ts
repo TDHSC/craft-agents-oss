@@ -13,6 +13,7 @@ import {
   deriveBedrockRegionPrefix,
   getMiniModel,
   mergeModelEntries,
+  toCustomModelOverrides,
 } from '../llm-connections'
 import type { ModelDefinition } from '../models'
 import { ANTHROPIC_MODELS, getModelDisplayName, getModelContextWindow, getModelShortName, isClaudeModel, normalizeDeprecatedModelId } from '../models'
@@ -614,5 +615,39 @@ describe('mergeModelEntries', () => {
 
   it('returns the incoming list when nothing is stored', () => {
     expect(mergeModelEntries(undefined, ['a', 'b'])).toEqual(['a', 'b'])
+  })
+})
+
+// ============================================================
+// toCustomModelOverrides
+// ============================================================
+
+describe('toCustomModelOverrides', () => {
+  const model = (fields: Record<string, unknown>) => ({ id: 'a', name: 'a', shortName: 'a', ...fields }) as unknown as ModelDefinition
+
+  it('keeps plain ids as they are', () => {
+    expect(toCustomModelOverrides(['a', 'b'])).toEqual(['a', 'b'])
+  })
+
+  it('collapses an object without overrides to its id', () => {
+    expect(toCustomModelOverrides([model({})])).toEqual(['a'])
+  })
+
+  it('copies every override field', () => {
+    expect(toCustomModelOverrides([
+      model({ contextWindow: 262_144, supportsImages: true, maxTokens: 65_536, supportsThinking: true }),
+    ])).toEqual([
+      { id: 'a', contextWindow: 262_144, supportsImages: true, maxTokens: 65_536, supportsThinking: true },
+    ])
+  })
+
+  it('keeps explicit false booleans, which override endpoint-level defaults', () => {
+    expect(toCustomModelOverrides([model({ supportsImages: false, supportsThinking: false })])).toEqual([
+      { id: 'a', supportsImages: false, supportsThinking: false },
+    ])
+  })
+
+  it('omits fields the entry does not set', () => {
+    expect(toCustomModelOverrides([model({ maxTokens: 4096 })])).toEqual([{ id: 'a', maxTokens: 4096 }])
   })
 })

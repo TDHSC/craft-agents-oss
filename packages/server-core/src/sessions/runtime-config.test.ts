@@ -65,6 +65,15 @@ describe('buildBackendRuntimeSignature', () => {
     expect(withCap(32_768)).not.toBe(withCap(65_536))
   })
 
+  it('changes when a custom endpoint model maxTokens or supportsThinking changes', () => {
+    const base = sig(baseCompat)
+    const withMaxTokens = sig({ ...baseCompat, models: [{ id: 'gemma', supportsImages: true, maxTokens: 65_536 } as never] })
+    const withThinking = sig({ ...baseCompat, models: [{ id: 'gemma', supportsImages: true, supportsThinking: true } as never] })
+    expect(withMaxTokens).not.toBe(base)
+    expect(withThinking).not.toBe(base)
+    expect(withThinking).not.toBe(withMaxTokens)
+  })
+
   it('ignores non-runtime metadata such as lastUsedAt', () => {
     expect(sig({ ...baseCompat, lastUsedAt: 1 })).toBe(sig({ ...baseCompat, lastUsedAt: 2 }))
   })
