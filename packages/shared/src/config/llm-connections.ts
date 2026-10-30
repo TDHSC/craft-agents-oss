@@ -16,6 +16,7 @@ import {
   ANTHROPIC_MODELS,
   normalizeDeprecatedModelId,
 } from './models';
+import type { CustomEndpointModelMetadata } from './model-fetcher';
 import type { CredentialManager } from '../credentials/manager.ts';
 
 // ============================================================
@@ -594,6 +595,33 @@ export function mergeModelEntries(
     if (!stored.has(idOf(m))) stored.set(idOf(m), m);
   }
   return incoming.map(m => (typeof m === 'string' ? stored.get(m) ?? m : m));
+}
+
+/**
+ * Fill in the per-model limits an endpoint published (`/models`) without
+ * touching anything already set: only fields that are `undefined` on an entry
+ * are written, so the user's edits and the composer's image toggle always win.
+ * A bare id becomes an object only when there is something to add. Returns
+ * `null` when nothing changed, so callers can skip the save.
+ */
+export function fillMissingModelMetadata(
+  models: ReadonlyArray<ModelDefinition | string>,
+  metadata: ReadonlyMap<string, CustomEndpointModelMetadata>,
+): Array<ModelDefinition | string> | null {
+  let changed = false;
+  const filled = models.map(m => {
+    const id = typeof m === 'string' ? m : m.id;
+    const meta = metadata.get(id) ?? metadata.get(id.replace(/^pi\//, ''));
+    if (!meta) return m;
+    const current: Partial<CustomEndpointModelMetadata> = typeof m === 'string' ? {} : m;
+    const additions = (Object.keys(meta) as Array<keyof CustomEndpointModelMetadata>)
+      .filter(key => current[key] === undefined)
+      .reduce<CustomEndpointModelMetadata>((acc, key) => ({ ...acc, [key]: meta[key] }), {});
+    if (Object.keys(additions).length === 0) return m;
+    changed = true;
+    return (typeof m === 'string' ? { id: m, name: m, shortName: m, ...additions } : { ...m, ...additions }) as ModelDefinition;
+  });
+  return changed ? filled : null;
 }
 
 /** Per-model overrides sent to the Pi subprocess for a custom endpoint. */

@@ -18,12 +18,35 @@ import {
   updateLlmConnection,
   isCompatProvider,
   getModelsForProviderType,
+  parseCustomEndpointModelMetadata,
+  fillMissingModelMetadata,
+  type LlmConnection,
 } from '@craft-agent/shared/config'
 import { MODEL_FETCHERS } from './registry'
 import { handlerLog } from './runtime'
 
 /** Copilot models are server-managed — refresh every 10 minutes to pick up policy changes. */
 const COPILOT_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+
+/** A custom endpoint's `/models` is an optional extra, so a slow one is not worth waiting for. */
+const COMPAT_MODELS_TIMEOUT_MS = 5_000
+
+/**
+ * `GET /models` URL for a custom endpoint. OpenAI-style base URLs carry their
+ * version (`…/v1`) or not (`http://host:3425`, where `/v1` is added); Anthropic
+ * base URLs never include it (the Pi SDK appends `/v1/messages`).
+ */
+function compatModelsUrl(baseUrl: string, api: 'openai-completions' | 'anthropic-messages'): string {
+  const base = baseUrl.replace(/\/+$/, '')
+  if (api === 'anthropic-messages') return `${base}/v1/models`
+  let hasVersion = false
+  try {
+    hasVersion = /\/v\d+(\/|$)/.test(new URL(base).pathname)
+  } catch {
+    // Not a URL: let fetch report it.
+  }
+  return hasVersion ? `${base}/models` : `${base}/v1/models`
+}
 
 // ============================================================
 // Types
@@ -62,7 +85,7 @@ class ModelRefreshService {
 
   /**
    * Internal: actual refresh logic with fallback chain.
-   * Skips compat providers (not in fetcher map).
+   * Compat providers (not in fetcher map) only get their missing limits filled in.
    * Preserves user's defaultModel if still valid.
    * Updates connection.models in storage on success.
    */
@@ -73,8 +96,9 @@ class ModelRefreshService {
       return
     }
 
-    // Skip compat providers — users configure models manually
+    // Compat providers: users configure models manually, so the list is never replaced
     if (isCompatProvider(connection.providerType)) {
+      await this.enrichCompatModels(connection)
       return
     }
 
@@ -150,6 +174,46 @@ class ModelRefreshService {
   }
 
   /**
+   * Fill in the limits a custom endpoint publishes (`GET /models`) on the models
+   * the user already listed. Never adds, removes or replaces a model and never
+   * overwrites a field that is set (`fillMissingModelMetadata`), so edits and the
+   * composer's image toggle win; delete a value from the connection to re-learn it.
+   * There is no standard schema, so a missing or odd response is simply ignored.
+   */
+  private async enrichCompatModels(connection: LlmConnection): Promise<void> {
+    const { slug, customEndpoint } = connection
+    const baseUrl = connection.baseUrl?.trim()
+    if (!customEndpoint || !baseUrl || !connection.models?.length) return
+
+    try {
+      const { apiKey } = await this.getCredentials(slug)
+      const headers: Record<string, string> = { accept: 'application/json' }
+      if (apiKey) headers.authorization = `Bearer ${apiKey}`
+      if (customEndpoint.api === 'anthropic-messages') {
+        if (apiKey) headers['x-api-key'] = apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      }
+      const response = await fetch(compatModelsUrl(baseUrl, customEndpoint.api), {
+        headers,
+        signal: AbortSignal.timeout(COMPAT_MODELS_TIMEOUT_MS),
+      })
+      if (!response.ok) {
+        handlerLog.info(`Model refresh [${slug}]: /models returned ${response.status}, limits not learned`)
+        return
+      }
+      const metadata = parseCustomEndpointModelMetadata(await response.json())
+
+      // Re-read: the user may have edited the connection while the request ran.
+      const models = fillMissingModelMetadata(getLlmConnection(slug)?.models ?? [], metadata)
+      if (!models) return
+      updateLlmConnection(slug, { models })
+      handlerLog.info(`Model refresh [${slug}]: filled model limits from /models`)
+    } catch (error) {
+      handlerLog.info(`Model refresh [${slug}]: could not read /models: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  /**
    * Start periodic refresh timers for all existing connections.
    * Also runs an immediate non-blocking fetch for each.
    * Call on app startup after IPC handlers are registered.
@@ -158,7 +222,13 @@ class ModelRefreshService {
     const connections = getLlmConnections()
 
     for (const conn of connections) {
-      if (isCompatProvider(conn.providerType)) continue
+      if (isCompatProvider(conn.providerType)) {
+        // No timer: compat limits are read once at startup (and after a setup).
+        this.refreshConnection(conn.slug).catch(err => {
+          handlerLog.warn(`Initial model refresh failed for ${conn.slug}: ${err instanceof Error ? err.message : err}`)
+        })
+        continue
+      }
 
       const providerType = conn.providerType as FetchableProvider
       const fetcher = this.fetchers[providerType]

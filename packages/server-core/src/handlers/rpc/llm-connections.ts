@@ -55,7 +55,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   // credential flow that triggered it.
   const refreshModelsInBackground = (slug: string, context: string) => {
     try {
-      getModelRefreshService().refreshNow(slug).catch(err => {
+      getModelRefreshService().refreshNow(slug).then(() => sessionManager.refreshConnectionRuntime(slug)).catch(err => {
         deps.platform.logger?.warn(`Model refresh after ${context} failed for ${slug}: ${err instanceof Error ? err.message : err}`)
       })
     } catch (err) {
@@ -309,6 +309,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         } catch (err) {
           deps.platform.logger?.warn(`Model refresh after setup failed for ${setup.slug}: ${err instanceof Error ? err.message : err}`)
         }
+      } else if (isCompatProvider(pendingConnection.providerType)) {
+        // The list is user-defined, so only the limits the endpoint publishes get filled in.
+        // Detached: a slow /models must not delay the save, and open sessions are refreshed after it.
+        refreshModelsInBackground(setup.slug, 'setup')
       }
 
       // Reinitialize auth for the connection that was just created/updated,

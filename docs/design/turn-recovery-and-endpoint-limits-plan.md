@@ -97,6 +97,14 @@ The model list itself is never replaced, so `userDefined3Tier` lists stay exactl
 - Fill-only merge: never overwrites, and returns `null` when nothing changed.
 - Service: with a mocked `fetch`, the compat path saves only the filled fields.
 
+**Deviations (as implemented).**
+- The plan said setup already runs the refresh service for every connection. It does not for a compat connection that already lists models (`SETUP_LLM_CONNECTION` awaits `refreshNow` only when the list is empty or auto-synced). The handler now also calls `refreshModelsInBackground` for those, detached, so editing a connection picks up `/models` without delaying the save.
+- `diagnostics.ts` always appends `/v1/models`; it has no "version segment" check. The URL builder checks the base URL path for a `/vN` segment itself: `{base}/models` when present, else `{base}/v1/models`.
+- `max_tokens` is read as the output cap only on an entry that also has `max_input_tokens` or `capabilities` (the Anthropic shape). This keeps `parseCustomEndpointModelMetadata(json)` a one-argument function.
+- Only positive signals are reported. A model without `image` in its input modalities is left unset, not `false`, so a fill can never override an endpoint-wide `supportsImages: true`.
+- `fillMissingModelMetadata` re-reads the connection after the request, in case it was edited while the request ran.
+- The service test runs `refreshNow` in a subprocess with an isolated `CRAFT_CONFIG_DIR` and a stubbed `fetch`, as `storage-update-llm-connection.test.ts` does, because the config store is module-level.
+
 **Commit:** `feat(model-fetchers): fill custom endpoint model limits from /models`. The body notes that there is no standard schema, and explains fill-only and the trade-off of having no periodic refresh.
 
 ## Step 4: show replies cut off by the output limit, fix rate-limit text
