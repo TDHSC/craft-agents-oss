@@ -9,6 +9,7 @@
  * - Sources: [source:slug]
  * - Files:   [file:path]
  * - Folders: [folder:path]
+ * - Sessions: [session:id] or [session:id:messageId] (a quote of one message)
  */
 
 // Simple path join that works in both Node and browser contexts.
@@ -26,6 +27,10 @@ function joinPath(base: string, relative: string): string {
 // Using literal space instead of \s to avoid matching newlines which would break parsing
 export const WS_ID_CHARS = '[\\w .-]'
 
+// Session mention source: [session:sessionId] or [session:sessionId:messageId]
+// Captures sessionId (1) and the optional messageId (2); build a RegExp with the 'g' flag.
+export const SESSION_MENTION_PATTERN = '\\[session:([\\w-]+)(?::([\\w-]+))?\\]'
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -41,6 +46,8 @@ export interface ParsedMentions {
   files: string[]
   /** Folder paths mentioned via [folder:path] */
   folders: string[]
+  /** Session IDs mentioned via [session:id] or quoted via [session:id:messageId] */
+  sessions: string[]
 }
 
 // ============================================================================
@@ -70,6 +77,7 @@ export function parseMentions(
     sources: [],
     files: [],
     folders: [],
+    sessions: [],
   }
 
   // Match source mentions: [source:slug]
@@ -114,6 +122,15 @@ export function parseMentions(
     const folderPath = match[1]!
     if (!result.folders.includes(folderPath)) {
       result.folders.push(folderPath)
+    }
+  }
+
+  // Match session mentions and quotes: [session:id] or [session:id:messageId]
+  const sessionPattern = new RegExp(SESSION_MENTION_PATTERN, 'g')
+  while ((match = sessionPattern.exec(text)) !== null) {
+    const sessionId = match[1]!
+    if (!result.sessions.includes(sessionId)) {
+      result.sessions.push(sessionId)
     }
   }
 
@@ -175,6 +192,35 @@ export function resolveSourceMentions(text: string): string {
   return text.replace(
     /\[source:([\w-]+)\]/g,
     (_match, slug: string) => `[Mentioned source: ${slug}]`
+  )
+}
+
+/**
+ * Build the composer token for a session mention or a quote of one of its messages.
+ *
+ * formatSessionMention('261028-apt-mountain')                    → [session:261028-apt-mountain]
+ * formatSessionMention('261028-apt-mountain', 'msg-1793-1s7ahh') → [session:261028-apt-mountain:msg-1793-1s7ahh]
+ */
+export function formatSessionMention(sessionId: string, messageId?: string): string {
+  return messageId ? `[session:${sessionId}:${messageId}]` : `[session:${sessionId}]`
+}
+
+/**
+ * Resolve session mentions and quotes to semantic markers (IDs only — the agent
+ * reads the conversation with the get_session_messages tool).
+ *
+ * [session:261028-apt-mountain]                 → [Mentioned session: 261028-apt-mountain]
+ * [session:261028-apt-mountain:msg-1793-1s7ahh] → [Quoted session: 261028-apt-mountain, from message msg-1793-1s7ahh]
+ *
+ * @param text - The message text with session mentions
+ */
+export function resolveSessionMentions(text: string): string {
+  return text.replace(
+    new RegExp(SESSION_MENTION_PATTERN, 'g'),
+    (_match, sessionId: string, messageId?: string) =>
+      messageId
+        ? `[Quoted session: ${sessionId}, from message ${messageId}]`
+        : `[Mentioned session: ${sessionId}]`
   )
 }
 

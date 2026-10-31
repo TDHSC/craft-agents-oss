@@ -68,7 +68,7 @@ import { getMiniAgentSystemPrompt } from '../prompts/system.ts';
 import { buildTitlePrompt, buildRegenerateTitlePrompt, validateTitle } from '../utils/title-generator.ts';
 
 // Skill extraction for Codex/Copilot backends (Claude uses native SDK Skill tool)
-import { parseMentions, resolveSkillMentions, resolveSourceMentions, resolveFileMentions } from '../mentions/index.ts';
+import { parseMentions, resolveSkillMentions, resolveSourceMentions, resolveSessionMentions, resolveFileMentions } from '../mentions/index.ts';
 import { loadAllSkills } from '../skills/storage.ts';
 
 // ============================================================
@@ -944,7 +944,8 @@ ${formattedMessages}
     const withSkills = resolveSkillMentions(message, skillNames);
     const withSources = resolveSourceMentions(withSkills);
     const workDir = this.config.session?.workingDirectory ?? this.workingDirectory;
-    const resolved = resolveFileMentions(withSources, workDir).trim();
+    const withSessions = resolveSessionMentions(withSources);
+    const resolved = resolveFileMentions(withSessions, workDir).trim();
 
     // If user sent only skill mentions with no other text, add a directive
     const cleanMessage = (!resolved && skillPaths.size > 0)
