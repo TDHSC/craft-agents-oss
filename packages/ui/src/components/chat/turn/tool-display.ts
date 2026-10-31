@@ -110,6 +110,7 @@ export function getToolDisplayName(name: string): string {
     'set_session_labels': 'Set Session Labels',
     'set_session_status': 'Set Session Status',
     'get_session_info': 'Get Session Info',
+    'get_session_messages': 'Read Session',
     'list_sessions': 'List Sessions',
     'archive_session': 'Archive Session',
     'create_task': 'Create Task',

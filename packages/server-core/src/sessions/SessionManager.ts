@@ -5189,6 +5189,45 @@ export class SessionManager implements ISessionManager {
             isActive: session.agent != null,
           }
         },
+        getSessionMessagesFn: async (sessionId: string) => {
+          const target = this.sessions.get(sessionId)
+          // Reading conversation content is limited to the caller's workspace (product decision);
+          // get_session_info / send_agent_message intentionally stay unscoped.
+          if (!target || target.workspace.id !== managed.workspace.id) return null
+          // Sessions never opened are lazy-loaded from disk, same as opening them in the UI
+          await this.ensureMessagesLoaded(target)
+
+          // Position (in target.messages) is kept to place the branch point below
+          const kept = target.messages
+            .map((m, position) => ({ m, position }))
+            .filter(({ m }) => !m.hidden && !m.parentToolUseId
+              && (m.role === 'user' || m.role === 'tool' || (m.role === 'assistant' && !m.isIntermediate)))
+          const messages = kept.map(({ m }) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant' | 'tool',
+            content: m.content,
+            toolName: m.toolDisplayName ?? m.toolName,
+            toolIntent: m.toolIntent,
+            toolResult: m.toolResult,
+            isStreaming: m.isStreaming,
+          }))
+
+          // Branching copies the parent's messages up to and including the branch message, IDs unchanged
+          let forkIndex: number | undefined
+          if (target.branchFromMessageId) {
+            const branchPosition = target.messages.findIndex(m => m.id === target.branchFromMessageId)
+            if (branchPosition >= 0) forkIndex = kept.filter(({ position }) => position <= branchPosition).length
+          }
+
+          return {
+            id: target.id,
+            name: target.name ?? target.id,
+            status: target.sessionStatus ?? 'todo',
+            isProcessing: target.isProcessing,
+            forkIndex,
+            messages,
+          }
+        },
         listSessionsFn: (options) => {
           const DEFAULT_LIMIT = 20
           const MAX_LIMIT = 100

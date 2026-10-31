@@ -324,6 +324,9 @@ export interface SessionToolContext {
   /** List sessions in the workspace with pagination. Injected by backend. */
   listSessions?(options?: ListSessionsOptions): ListSessionsResult;
 
+  /** Read a session's conversation. Resolves null when the session doesn't exist or belongs to another workspace. Injected by backend. */
+  getSessionMessages?(sessionId: string): Promise<SessionTranscript | null>;
+
   /**
    * List background tasks (running + recently-terminal) for a session from the
    * main-process registry. Defaults to the current session if no ID given.
@@ -851,6 +854,27 @@ export interface SessionInfo {
   llmConnection?: string;
   model?: string;
   isActive: boolean;
+}
+
+/** One entry of a session transcript (mirrors the fields of core's `Message` that get_session_messages prints). */
+export interface SessionTranscriptMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  toolName?: string;
+  toolIntent?: string;
+  toolResult?: string;
+  isStreaming?: boolean;
+}
+
+export interface SessionTranscript {
+  id: string;
+  name: string;
+  status: string;
+  isProcessing: boolean;
+  /** Number of leading entries in `messages` copied from the parent session (branched sessions only). */
+  forkIndex?: number;
+  messages: SessionTranscriptMessage[];
 }
 
 // ============================================================

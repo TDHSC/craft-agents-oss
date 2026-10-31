@@ -35,6 +35,7 @@ export async function handleSendAgentMessage(
     const wrappedMessage = [
       `[Message from session "${ctx.sessionId}" (${senderName})]`,
       `Use send_agent_message with sessionId "${ctx.sessionId}" to reply.`,
+      `To see the conversation behind this message, read it with get_session_messages (sessionId "${ctx.sessionId}").`,
       '',
       '---',
       '',

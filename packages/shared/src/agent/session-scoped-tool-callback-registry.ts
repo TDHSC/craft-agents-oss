@@ -59,6 +59,8 @@ export interface SessionScopedToolCallbacks {
   archiveSessionFn?: (sessionId: string, archived: boolean) => void | Promise<void>;
   /** Get detailed info about a session (defaults to current). */
   getSessionInfoFn?: (sessionId?: string) => import('@craft-agent/session-tools-core').SessionInfo | null;
+  /** Read a session's conversation (null when missing or in another workspace). */
+  getSessionMessagesFn?: (sessionId: string) => Promise<import('@craft-agent/session-tools-core').SessionTranscript | null>;
   /** List sessions in the workspace with pagination. */
   listSessionsFn?: (options?: import('@craft-agent/session-tools-core').ListSessionsOptions) => import('@craft-agent/session-tools-core').ListSessionsResult;
   /** List background tasks (running + terminal) for a session from the main-process registry. */

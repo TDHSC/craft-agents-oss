@@ -42,6 +42,8 @@ describe('handleSendAgentMessage delivery ack', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].message).toContain('sender-1');
     expect(calls[0].message).toContain('ping');
+    // The receiver is told how to read the sender's conversation.
+    expect(calls[0].message).toContain('get_session_messages');
   });
 
   it('rejects a self-send', async () => {

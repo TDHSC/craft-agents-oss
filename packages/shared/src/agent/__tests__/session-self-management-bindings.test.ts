@@ -256,12 +256,13 @@ describe('Claude/Pi session self-management parity', () => {
     unregisterSessionScopedToolCallbacks(sessionId);
   });
 
-  it('both paths expose the same 6 bound properties when callbacks are registered', () => {
+  it('both paths expose the same 7 bound properties when callbacks are registered', () => {
     const SELF_MGMT_PROPERTIES = [
       'setSessionLabels',
       'setSessionStatus',
       'getSessionInfo',
       'listSessions',
+      'getSessionMessages',
       'resolveLabels',
       'resolveStatus',
     ] as const;
@@ -271,6 +272,7 @@ describe('Claude/Pi session self-management parity', () => {
       setSessionStatusFn: () => {},
       getSessionInfoFn: () => makeSessionInfo({ id: sessionId }),
       listSessionsFn: () => ({ total: 0, returned: 0, sessions: [] }),
+      getSessionMessagesFn: async () => null,
       resolveLabelsFn: (l) => ({ resolved: l, unknown: [], available: l }),
       resolveStatusFn: (s) => ({ resolved: s, available: [] }),
     });

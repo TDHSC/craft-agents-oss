@@ -84,6 +84,8 @@ export { handleSetSessionStatus } from './set-session-status.ts';
 export type { SetSessionStatusArgs } from './set-session-status.ts';
 export { handleGetSessionInfo } from './get-session-info.ts';
 export type { GetSessionInfoArgs } from './get-session-info.ts';
+export { handleGetSessionMessages } from './get-session-messages.ts';
+export type { GetSessionMessagesArgs } from './get-session-messages.ts';
 export { handleListSessions } from './list-sessions.ts';
 export type { ListSessionsArgs } from './list-sessions.ts';
 export { handleListBackgroundTasks } from './list-background-tasks.ts';

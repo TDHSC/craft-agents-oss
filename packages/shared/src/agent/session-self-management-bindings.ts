@@ -26,7 +26,7 @@ import { getSessionScopedToolCallbacks } from './session-scoped-tool-callback-re
  * Attach session self-management bindings to a SessionToolContext.
  *
  * Defines lazy getters for the session-management callbacks (labels, status,
- * archive, list/info, resolve helpers), messaging, createTask, project memory
+ * archive, list/info/messages, resolve helpers), messaging, createTask, project memory
  * appends, pages, MCP source resources/prompts, and decide.
  *
  * @param context - The SessionToolContext to augment (mutated in place)
@@ -66,6 +66,14 @@ export function attachSessionSelfManagementBindings(
   Object.defineProperty(context, 'listSessions', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.listSessionsFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'getSessionMessages', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.getSessionMessagesFn;
     },
     configurable: true,
     enumerable: true,

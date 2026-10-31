@@ -122,8 +122,8 @@ describe('session tool filtering helpers', () => {
     });
 
     it('keeps only the always-on coding tools in a bare coding session', () => {
-      expect(names({ profile: 'coding' })).toEqual(['SubmitPlan', 'send_developer_feedback', 'pr_status', 'pr_bind', 'pr_unbind', 'pr_set_auto_merge', 'list_background_tasks']);
-      expect(names({ profile: 'coding', includeDeveloperFeedback: false })).toEqual(['SubmitPlan', 'pr_status', 'pr_bind', 'pr_unbind', 'pr_set_auto_merge', 'list_background_tasks']);
+      expect(names({ profile: 'coding' })).toEqual(['SubmitPlan', 'send_developer_feedback', 'pr_status', 'pr_bind', 'pr_unbind', 'pr_set_auto_merge', 'get_session_messages', 'list_background_tasks']);
+      expect(names({ profile: 'coding', includeDeveloperFeedback: false })).toEqual(['SubmitPlan', 'pr_status', 'pr_bind', 'pr_unbind', 'pr_set_auto_merge', 'get_session_messages', 'list_background_tasks']);
     });
 
     it('adds source tools only with enabled sources, project memory only with a project', () => {
@@ -152,7 +152,7 @@ describe('session tool filtering helpers', () => {
 
     it('applies the same filter to the JSON Schema view (Pi)', () => {
       const pi = getToolDefsAsJsonSchema({ prefix: 'mcp__session__', profile: 'coding' }).map(d => d.name);
-      expect(pi).toEqual(['mcp__session__SubmitPlan', 'mcp__session__send_developer_feedback', 'mcp__session__pr_status', 'mcp__session__pr_bind', 'mcp__session__pr_unbind', 'mcp__session__pr_set_auto_merge', 'mcp__session__list_background_tasks']);
+      expect(pi).toEqual(['mcp__session__SubmitPlan', 'mcp__session__send_developer_feedback', 'mcp__session__pr_status', 'mcp__session__pr_bind', 'mcp__session__pr_unbind', 'mcp__session__pr_set_auto_merge', 'mcp__session__get_session_messages', 'mcp__session__list_background_tasks']);
     });
   });
 

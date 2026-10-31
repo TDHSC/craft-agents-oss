@@ -920,6 +920,7 @@ Reference: \`${DOC_REFS.decisions}\`
 Use session tools to inspect or update Craft Agent sessions/tasks:
 
 - \`get_session_info\`: inspect current or target session metadata.
+- \`get_session_messages\`: read another session's conversation.
 - \`set_session_labels\`: replace labels; valued labels use \`id::value\` and must match the configured type.
 - \`set_session_status\`: set an open workflow status. Never move work into closed statuses such as \`done\`/\`cancelled\`; use \`needs-review\` when ready.
 - \`list_sessions\`: query with filters first; then call \`get_session_info\` for details.

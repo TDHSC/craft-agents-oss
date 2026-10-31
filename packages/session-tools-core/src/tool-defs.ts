@@ -43,6 +43,7 @@ import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
+import { handleGetSessionMessages } from './handlers/get-session-messages.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
 import { handleCreateTask } from './handlers/create-task.ts';
@@ -260,6 +261,15 @@ export const SetSessionStatusSchema = z.object({
 
 export const GetSessionInfoSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to query. Omit to get info about the current session.'),
+});
+
+export const GetSessionMessagesSchema = z.object({
+  sessionId: z.string().optional().describe('Session ID to read. Omit to read your own session.'),
+  fromMessageId: z.string().optional().describe('Start at this message ID (inclusive) and read forward. Use the "Later" cursor of a previous call, or the messageId of a [Quoted session: ...] reference.'),
+  beforeMessageId: z.string().optional().describe('Read the messages before this message ID (exclusive). Use the "Earlier" cursor of a previous call.'),
+  afterFork: z.boolean().optional().describe('Start right after the part a forked session copied from its parent. Only for sessions that were branched from another one.'),
+  limit: z.number().optional().describe('Number of user/assistant messages to return (default 5, max 50).'),
+  includeToolResults: z.boolean().optional().describe('Also print each tool call\'s result (truncated). Default false: tool calls show as one-line summaries.'),
 });
 
 export const ArchiveSessionSchema = z.object({
@@ -714,6 +724,12 @@ This changes state on GitHub and can lead to the PR merging without further acti
 Returns labels, status, name, permission mode, projectId (if the session is bound to a project), workingDirectory, and other details.
 Call with no arguments to introspect your own session state.`,
 
+  get_session_messages: `Read a session's conversation: user messages and assistant replies, with tool calls as one-line summaries.
+
+Use it when the user's message contains [Mentioned session: <id>], or [Quoted session: <id>, from message <messageId>] (pass that messageId as fromMessageId), or whenever another session's discussion would help.
+Returns the latest 5 messages by default (or 5 starting at fromMessageId); raise limit (max 50) for more. Page with the "Earlier" / "Later" cursors it prints (beforeMessageId / fromMessageId). For a forked session, afterFork: true skips the part copied from its parent.
+Only sessions in the current workspace can be read. Omit sessionId to read your own session.`,
+
   list_sessions: `List sessions in the workspace. Returns total count + paginated results.
 
 Use filters (status, label, search) to narrow results instead of fetching everything. Default limit is 20 sessions.
@@ -837,6 +853,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'pr_unbind', description: TOOL_DESCRIPTIONS.pr_unbind, inputSchema: PrUnbindSchema, executionMode: 'registry', safeMode: 'block', handler: handlePrUnbind },
   { name: 'pr_set_auto_merge', description: TOOL_DESCRIPTIONS.pr_set_auto_merge, inputSchema: PrSetAutoMergeSchema, executionMode: 'registry', safeMode: 'block', handler: handlePrSetAutoMerge },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
+  { name: 'get_session_messages', description: TOOL_DESCRIPTIONS.get_session_messages, inputSchema: GetSessionMessagesSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionMessages },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   { name: 'list_background_tasks', description: TOOL_DESCRIPTIONS.list_background_tasks, inputSchema: ListBackgroundTasksSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListBackgroundTasks },
   // Inter-session messaging
@@ -872,6 +889,8 @@ export const CODING_PROFILE_TOOLS: Readonly<Record<string, 'always' | 'sources' 
   pr_bind: 'always',
   pr_unbind: 'always',
   pr_set_auto_merge: 'always',
+  // Read-only: lets coding sessions read the sessions the user @-mentions or quotes.
+  get_session_messages: 'always',
   project_memory_append: 'project',
   source_test: 'sources',
   source_oauth_trigger: 'sources',
