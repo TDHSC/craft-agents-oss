@@ -25,6 +25,19 @@ export { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMen
 // Constants
 // ============================================================================
 
+/** dataTransfer type for session IDs dragged from the session list (JSON string array) */
+export const SESSION_DRAG_MIME = 'application/x-craft-session-ids'
+
+/** Parse the SESSION_DRAG_MIME payload defensively: anything but a string array yields no IDs. */
+export function parseDraggedSessionIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string' && id.length > 0) : []
+  } catch {
+    return []
+  }
+}
+
 // Workspace ID character class for regex: word chars, spaces (NOT newlines), hyphens, dots
 // Using literal space instead of \s to avoid matching newlines which would break parsing
 const WS_ID_CHARS = '[\\w .-]'

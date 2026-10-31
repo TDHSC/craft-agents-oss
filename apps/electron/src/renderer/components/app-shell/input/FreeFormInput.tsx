@@ -25,7 +25,8 @@ import {
   useInlineLabelMenu,
 } from '@/components/ui/label-menu'
 import type { LabelConfig } from '@craft-agent/shared/labels'
-import { parseMentions } from '@/lib/mentions'
+import { formatSessionMention } from '@craft-agent/shared/mentions'
+import { parseMentions, parseDraggedSessionIds, SESSION_DRAG_MIME } from '@/lib/mentions'
 import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
 import { useInputAvailableHeight } from '@/hooks/useInputAvailableHeight'
 import { useTransportConnectionState } from '@/hooks/useTransportConnectionState'
@@ -1255,6 +1256,26 @@ export function FreeFormInput({
     dragCounterRef.current = 0
     setIsDraggingOver(false)
     if (disabled) return
+
+    // Sessions dragged from the session list become mention tokens at the caret
+    const sessionDrag = e.dataTransfer.getData(SESSION_DRAG_MIME)
+    if (sessionDrag) {
+      const ids = parseDraggedSessionIds(sessionDrag).filter(id => id !== sessionId)
+      if (ids.length === 0) return
+      const text = ids.map(id => formatSessionMention(id)).join(' ') + ' '
+      const caret = richInputRef.current?.element?.contains(document.activeElement)
+        ? richInputRef.current.selectionStart
+        : lastCaretPositionRef.current
+      const at = Math.min(caret ?? input.length, input.length)
+      const newValue = input.slice(0, at) + text + input.slice(at)
+      setInput(newValue)
+      syncToParent(newValue)
+      setTimeout(() => {
+        richInputRef.current?.focus()
+        richInputRef.current?.setSelectionRange(at + text.length, at + text.length)
+      }, 0)
+      return
+    }
 
     const files = Array.from(e.dataTransfer.files)
     setLoadingCount(files.length)

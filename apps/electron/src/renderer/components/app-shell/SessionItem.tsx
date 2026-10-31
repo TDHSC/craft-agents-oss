@@ -18,6 +18,7 @@ import { getSessionTitle, getSessionPreviewText, highlightMatch, hasUnreadMeta, 
 import { useSessionListContext } from "@/context/SessionListContext"
 import { useAppShellContext } from "@/context/AppShellContext"
 import { navigate, routes } from "@/lib/navigate"
+import { SESSION_DRAG_MIME } from "@/lib/mentions"
 import type { SessionMeta } from "@/atoms/sessions"
 import { messagingBindingsBySessionAtom } from "@/atoms/messaging"
 import { useAtomValue } from "jotai"
@@ -138,6 +139,13 @@ export function SessionItem({
       onRangeSelect()
       return
     }
+  }
+
+  // A plain left click selects on release, not on press: dragging a session into a
+  // composer must not switch to it first (a drag never fires `click`).
+  const handleSelectClick = (e: React.MouseEvent) => {
+    // Modifier clicks were handled on mousedown; detail 0 = keyboard-generated (handled by ctx.onKeyDown)
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.detail === 0) return
     rendererPerf.startSessionSwitch(item.id)
     onSelect()
   }
@@ -176,8 +184,18 @@ export function SessionItem({
       // continues to convey "selected".
       suppressSelectionBar={!!projectColor}
       onMouseDown={handleClick}
+      onClick={handleSelectClick}
       buttonProps={{
         ...itemProps,
+        // Drag into a composer to mention the session; a multi-selection drags together. No HTML5 drag on touch.
+        ...(!isCompactMode && {
+          draggable: true,
+          onDragStart: (e: React.DragEvent) => {
+            const ids = isInMultiSelect && ctx.selectedSessionIds.size > 0 ? [...ctx.selectedSessionIds] : [item.id]
+            e.dataTransfer.setData(SESSION_DRAG_MIME, JSON.stringify(ids))
+            e.dataTransfer.effectAllowed = 'copy'
+          },
+        }),
         onKeyDown: (e: React.KeyboardEvent) => {
           ;(itemProps as { onKeyDown: (event: React.KeyboardEvent) => void }).onKeyDown(e)
           ctx.onKeyDown(e, item)

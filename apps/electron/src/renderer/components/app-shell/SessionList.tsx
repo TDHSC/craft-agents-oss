@@ -713,6 +713,7 @@ export function SessionList({
     labels,
     searchQuery: resolvedSearchQuery,
     selectedSessionId: focusedSessionId !== undefined ? focusedSessionId : selectionStore.state.selected,
+    selectedSessionIds: selectionStore.state.selectedIds,
     isMultiSelectActive,
     sessionOptions,
     contentSearchResults,
@@ -726,7 +727,7 @@ export function SessionList({
     projects, onSetProjectId,
     handleSelectSessionById, handleOpenInNewWindow, setSendToWorkspace, handleFocusZone, handleKeyDown,
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,
-    focusedSessionId, selectionStore.state.selected, isMultiSelectActive,
+    focusedSessionId, selectionStore.state.selected, selectionStore.state.selectedIds, isMultiSelectActive,
     sessionOptions, contentSearchResults, activeChatMatchInfo, hasPendingPrompt,
   ])
 

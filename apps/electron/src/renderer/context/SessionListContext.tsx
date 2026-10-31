@@ -32,6 +32,8 @@ export interface SessionListContextValue {
   labels: LabelConfig[]
   searchQuery?: string
   selectedSessionId?: string | null
+  /** All selected session IDs (the multi-selection, when active) — what a drag carries */
+  selectedSessionIds: Set<string>
   isMultiSelectActive: boolean
 
   // Per-session lookup maps

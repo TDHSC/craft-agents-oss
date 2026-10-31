@@ -81,10 +81,10 @@ export interface EntityRowProps {
    *  when an outer wrapper draws its own accent stripe (e.g. project color) at
    *  the same leading edge and the two would collide. */
   suppressSelectionBar?: boolean
-  /** Click handler — use onMouseDown for modifier key detection (Session), or onClick for simple cases */
+  /** Press handler — fires on mousedown, for modifier key detection (Session). Can be combined with onClick. */
   onMouseDown?: (e: React.MouseEvent) => void
-  /** Simple click handler (used when modifier key detection isn't needed) */
-  onClick?: () => void
+  /** Click handler — fires on mouse release (also for keyboard-generated clicks), so a press that turns into a drag never triggers it */
+  onClick?: (e: React.MouseEvent) => void
   /** @deprecated Every row draws its own hairline now (mail-style); kept for API compatibility, renders nothing. */
   showSeparator?: boolean
 
@@ -256,9 +256,9 @@ export function EntityRow({
     [onMouseDown],
   )
 
-  const wrappedOnClick = React.useCallback(() => {
+  const wrappedOnClick = React.useCallback((e: React.MouseEvent) => {
     if (suppressNextActivationRef.current) return
-    onClick?.()
+    onClick?.(e)
   }, [onClick])
 
   // In compact mode we don't render Radix ContextMenu, so don't expose the
@@ -311,7 +311,7 @@ export function EntityRow({
           (buttonProps as Record<string, unknown>)?.className as string | undefined,
         )}
         onMouseDown={wrappedOnMouseDown}
-        onClick={!onMouseDown ? wrappedOnClick : undefined}
+        onClick={wrappedOnClick}
         onPointerDown={useCompactMenu ? onPointerDown : undefined}
         onPointerMove={useCompactMenu ? onPointerMove : undefined}
         onPointerUp={useCompactMenu ? cancelLongPress : undefined}

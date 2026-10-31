@@ -9,7 +9,7 @@
  * - Dots (.)
  */
 import { describe, it, expect } from 'bun:test'
-import { parseMentions, findMentionMatches, removeMention, stripAllMentions, resolveSkillMentions, resolveSourceMentions, extractBadges } from '../mentions'
+import { parseMentions, findMentionMatches, removeMention, stripAllMentions, resolveSkillMentions, resolveSourceMentions, extractBadges, parseDraggedSessionIds } from '../mentions'
 
 // ============================================================================
 // parseMentions - Skill Pattern Tests
@@ -388,5 +388,22 @@ describe('session mentions and quotes', () => {
   it('falls back to the ID when the session is unknown or no sessions are passed', () => {
     expect(extractBadges('[session:gone-1]', [], [], 'ws', sessions)[0]!.label).toBe('gone-1')
     expect(extractBadges('[session:gone-1]', [], [], 'ws')[0]!.label).toBe('gone-1')
+  })
+})
+
+describe('parseDraggedSessionIds', () => {
+  it('parses a JSON string array', () => {
+    expect(parseDraggedSessionIds('["261028-apt-mountain","261029-calm-river"]')).toEqual(['261028-apt-mountain', '261029-calm-river'])
+  })
+
+  it('yields no IDs for malformed or non-array payloads', () => {
+    expect(parseDraggedSessionIds('not json')).toEqual([])
+    expect(parseDraggedSessionIds('{"id":"a"}')).toEqual([])
+    expect(parseDraggedSessionIds('"a"')).toEqual([])
+    expect(parseDraggedSessionIds('')).toEqual([])
+  })
+
+  it('drops non-string and empty entries', () => {
+    expect(parseDraggedSessionIds('["a",1,null,"",["b"],"c"]')).toEqual(['a', 'c'])
   })
 })
