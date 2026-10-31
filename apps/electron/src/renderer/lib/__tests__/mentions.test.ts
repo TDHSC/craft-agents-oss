@@ -315,3 +315,78 @@ describe('extractBadges - skill qualification with workspace slug', () => {
     expect(badges[0]!.type).toBe('source')
   })
 })
+
+// ============================================================================
+// Session mentions and quotes
+// ============================================================================
+
+describe('session mentions and quotes', () => {
+  const SESSION_ID = '261028-apt-mountain'
+  const MESSAGE_ID = 'msg-1793413275096-1s7ahh'
+  const sessions = [
+    { id: SESSION_ID, name: 'Apartment search', workspaceId: 'w1' },
+    { id: 'no-title-1', workspaceId: 'w1' },
+  ] as any[]
+
+  it('finds a session mention without a messageId', () => {
+    const matches = findMentionMatches(`see [session:${SESSION_ID}]`, [], [])
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toMatchObject({
+      type: 'session',
+      id: SESSION_ID,
+      fullMatch: `[session:${SESSION_ID}]`,
+      startIndex: 4,
+    })
+    expect(matches[0]!.messageId).toBeUndefined()
+  })
+
+  it('finds a quote with its messageId', () => {
+    const matches = findMentionMatches(`[session:${SESSION_ID}:${MESSAGE_ID}]`, [], [])
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toMatchObject({
+      type: 'quote',
+      id: SESSION_ID,
+      messageId: MESSAGE_ID,
+      fullMatch: `[session:${SESSION_ID}:${MESSAGE_ID}]`,
+    })
+  })
+
+  it('sorts session matches with other mention types by position', () => {
+    const matches = findMentionMatches('[session:a-1] [source:linear] [session:b-2:msg-3]', [], ['linear'])
+    expect(matches.map(m => m.type)).toEqual(['session', 'source', 'quote'])
+  })
+
+  it('removes a session mention but leaves a quote of the same session', () => {
+    const text = `[session:${SESSION_ID}] and [session:${SESSION_ID}:${MESSAGE_ID}]`
+    expect(removeMention(text, 'session', SESSION_ID)).toBe(`and [session:${SESSION_ID}:${MESSAGE_ID}]`)
+  })
+
+  it('removes a quote of a session', () => {
+    const text = `[session:${SESSION_ID}] and [session:${SESSION_ID}:${MESSAGE_ID}]`
+    expect(removeMention(text, 'quote', SESSION_ID)).toBe(`[session:${SESSION_ID}] and`)
+  })
+
+  it('labels session badges with the session title and keeps the full token as rawText', () => {
+    const token = `[session:${SESSION_ID}]`
+    const badges = extractBadges(`look at ${token}`, [], [], 'ws', sessions)
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toMatchObject({
+      type: 'session',
+      label: 'Apartment search',
+      rawText: token,
+      start: 8,
+      end: 8 + token.length,
+    })
+  })
+
+  it('labels quote badges with the session title and keeps the full token as rawText', () => {
+    const token = `[session:${SESSION_ID}:${MESSAGE_ID}]`
+    const badges = extractBadges(token, [], [], 'ws', sessions)
+    expect(badges[0]).toMatchObject({ type: 'quote', label: 'Apartment search', rawText: token })
+  })
+
+  it('falls back to the ID when the session is unknown or no sessions are passed', () => {
+    expect(extractBadges('[session:gone-1]', [], [], 'ws', sessions)[0]!.label).toBe('gone-1')
+    expect(extractBadges('[session:gone-1]', [], [], 'ws')[0]!.label).toBe('gone-1')
+  })
+})

@@ -1,11 +1,14 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FadingText } from '@/components/ui/fading-text'
 import { SkillAvatar } from '@/components/ui/skill-avatar'
 import { SourceAvatar } from '@/components/ui/source-avatar'
 import type { LoadedSkill, LoadedSource, FileSearchResult } from '../../../shared/types'
 import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
+import { getSessionTitle } from '@/utils/session'
+import type { SessionMeta } from '@/atoms/sessions'
 import {
   INLINE_MENU_ITEM,
   INLINE_MENU_ITEM_SELECTED,
@@ -19,7 +22,8 @@ import {
 // Types
 // ============================================================================
 
-export type MentionItemType = 'skill' | 'source' | 'file' | 'folder'
+// 'quote' only comes from parsing [session:id:messageId]; the menu itself produces 'session'
+export type MentionItemType = 'skill' | 'source' | 'file' | 'folder' | 'session' | 'quote'
 
 export interface MentionItem {
   id: string
@@ -30,6 +34,7 @@ export interface MentionItem {
   skill?: LoadedSkill
   source?: LoadedSource
   file?: { path: string; type: 'file' | 'directory'; relativePath: string }
+  session?: SessionMeta
 }
 
 export interface MentionSection {
@@ -349,6 +354,9 @@ export function InlineMentionMenu({
                 {item.type === 'file' && (
                   <FileMenuIcon name={item.label} />
                 )}
+                {item.type === 'session' && (
+                  <MessageSquare size={16} strokeWidth={1.5} className="text-secondary" />
+                )}
               </div>
 
               {/* Label and optional path/badge */}
@@ -364,12 +372,14 @@ export function InlineMentionMenu({
                 </>
               ) : (
                 <>
-                  {/* Skill/source: label with type badge */}
+                  {/* Skill/source/session: label with type badge */}
                   <div className="flex-1 min-w-0">
                     <span className="truncate block">{item.label}</span>
                   </div>
                   <span className={MENU_TYPE_BADGE}>
-                    {item.type === 'skill' ? t('common.skill') : t('common.source')}
+                    {item.type === 'skill' ? t('common.skill')
+                      : item.type === 'session' ? (item.session?.isProcessing ? t('session.runState.working') : t('common.session'))
+                      : t('common.source')}
                   </span>
                 </>
               )}
@@ -459,6 +469,10 @@ export interface UseInlineMentionOptions {
   inputRef: React.RefObject<MentionInputElement | null>
   skills: LoadedSkill[]
   sources: LoadedSource[]
+  /** Sessions of the current workspace, offered as a "Sessions" section */
+  sessions?: SessionMeta[]
+  /** Session being composed in — excluded from the Sessions section */
+  currentSessionId?: string
   /** Base path for file search (working directory) */
   basePath?: string
   onSelect: (item: MentionItem) => void
@@ -482,6 +496,8 @@ export function useInlineMention({
   inputRef,
   skills,
   sources,
+  sessions,
+  currentSessionId,
   basePath,
   onSelect,
   workspaceId,
@@ -512,7 +528,24 @@ export function useInlineMention({
     }
   }, [])
 
-  // Build sections from available data (skills, sources, and file search results)
+  // Mentionable sessions: running first, then most recent activity
+  const sessionItems = React.useMemo((): MentionItem[] => {
+    if (!sessions) return []
+    return sessions
+      .filter(session => session.id !== currentSessionId && !session.isArchived && !session.hidden)
+      .sort((a, b) =>
+        Number(!!b.isProcessing) - Number(!!a.isProcessing) ||
+        (b.lastMessageAt ?? b.createdAt ?? 0) - (a.lastMessageAt ?? a.createdAt ?? 0)
+      )
+      .map(session => ({
+        id: session.id,
+        type: 'session' as const,
+        label: getSessionTitle(session),
+        session,
+      }))
+  }, [sessions, currentSessionId])
+
+  // Build sections from available data (skills, sources, sessions, and file search results)
   const sections = React.useMemo((): MentionSection[] => {
     const result: MentionSection[] = []
 
@@ -548,6 +581,15 @@ export function useInlineMention({
       })
     }
 
+    // Sessions section: first 8 while browsing, all of them while filtering so search finds any session
+    if (sessionItems.length > 0) {
+      result.push({
+        id: 'sessions',
+        label: 'Sessions',
+        items: committedFilter ? sessionItems : sessionItems.slice(0, 8),
+      })
+    }
+
     // Files section (from async search results)
     if (fileResults.length > 0) {
       result.push({
@@ -558,7 +600,7 @@ export function useInlineMention({
     }
 
     return result
-  }, [skills, sources, fileResults])
+  }, [skills, sources, sessionItems, committedFilter, fileResults])
 
   const handleInputChange = React.useCallback((value: string, cursorPosition: number) => {
     // Store current state for handleSelect
@@ -581,10 +623,15 @@ export function useInlineMention({
       // populated but produces zero matches, close the menu. This prevents the
       // "infinite spaces" problem while still allowing multi-word queries like
       // "app availability.md". Skills/sources rarely have spaces in names, so
-      // file cache is the authoritative signal here.
+      // file cache is the authoritative signal here — except session titles,
+      // which usually contain spaces and must keep the menu open while they match.
       if (filterText.includes(' ') && fileCache.current.length > 0) {
         const fileMatches = filterCacheResults(fileCache.current, filterText)
-        if (fileMatches.length === 0) {
+        const lowerFilter = filterText.trimEnd().toLowerCase()
+        const hasSessionMatch = sessionItems.some(item =>
+          item.label.toLowerCase().includes(lowerFilter) || item.id.toLowerCase().includes(lowerFilter)
+        )
+        if (fileMatches.length === 0 && !hasSessionMatch) {
           setIsOpen(false)
           setFilter('')
           setCommittedFilter('')
@@ -682,7 +729,7 @@ export function useInlineMention({
       setFileResults([])
       fileCache.current = []
     }
-  }, [inputRef, basePath])
+  }, [inputRef, basePath, sessionItems])
 
   const handleSelect = React.useCallback((item: MentionItem): { value: string; cursorPosition: number } => {
     let result = ''
@@ -693,7 +740,7 @@ export function useInlineMention({
       const before = currentValue.slice(0, atStart)
       const after = currentValue.slice(cursorPosition)
 
-      const buildMentionText = (kind: 'skill' | 'source' | 'file' | 'folder', value: string): string =>
+      const buildMentionText = (kind: 'skill' | 'source' | 'file' | 'folder' | 'session', value: string): string =>
         '[' + kind + ':' + value + '] '
 
       // Build the mention text based on type using bracket syntax.
@@ -713,6 +760,8 @@ export function useInlineMention({
         mentionText = buildMentionText('file', item.file?.relativePath || item.id)
       } else if (item.type === 'folder') {
         mentionText = buildMentionText('folder', item.file?.relativePath || item.id)
+      } else if (item.type === 'session') {
+        mentionText = buildMentionText('session', item.id)
       } else {
         mentionText = buildMentionText('skill', item.id)
       }

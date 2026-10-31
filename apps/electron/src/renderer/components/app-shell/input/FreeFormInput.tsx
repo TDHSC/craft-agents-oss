@@ -58,6 +58,8 @@ import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
 import { buildPlanApprovalMessage } from '../plan-approval-message'
+import { useAtomValue } from 'jotai'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { shouldHandleScopedInputEvent, shouldRecallPromptOnArrowUp } from './input-event-guards'
 import { clearPendingFocusForSession, consumePendingFocusForSession } from './focus-input-events'
 import {
@@ -443,6 +445,17 @@ export function FreeFormInput({
     if (!appShellCtx || !workspaceId) return workspaceId
     return appShellCtx.workspaces.find(w => w.id === workspaceId)?.slug ?? workspaceId
   }, [appShellCtx, workspaceId])
+
+  // This workspace's sessions for @-mentions and badge titles. The map is not updated
+  // by streaming, so this only re-renders on list changes. Remote workspaces store
+  // sessions under their remote workspace ID (same matching as AppShell's session list).
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const workspaceSessions = React.useMemo(() => {
+    const remoteWorkspaceId = appShellCtx?.workspaces.find(w => w.id === workspaceId)?.remoteServer?.remoteWorkspaceId
+    return Array.from(sessionMetaMap.values()).filter(s =>
+      !workspaceId || s.workspaceId === workspaceId || (!!remoteWorkspaceId && s.workspaceId === remoteWorkspaceId)
+    )
+  }, [sessionMetaMap, appShellCtx, workspaceId])
 
   // Read panel focus state from context (for multi-panel unfocused styling)
   const appShellContext = useOptionalAppShellContext()
@@ -973,11 +986,13 @@ export function FreeFormInput({
     // Skills also don't need special handling beyond text insertion.
   }, [optimisticSourceSlugs, onSourcesChange])
 
-  // Inline mention hook (for skills, sources, and files)
+  // Inline mention hook (for skills, sources, sessions, and files)
   const inlineMention = useInlineMention({
     inputRef: richInputRef,
     skills,
     sources,
+    sessions: workspaceSessions,
+    currentSessionId: sessionId,
     basePath: workingDirectory,
     onSelect: handleMentionSelect,
     // Use workspace slug (not UUID) for SDK skill qualification
@@ -1730,6 +1745,7 @@ export function FreeFormInput({
           disabled={disabled}
           skills={skills}
           sources={sources}
+          sessions={workspaceSessions}
           workspaceId={workspaceSlug}
           // Copy type (15/24; 16/26 in compact so iOS never zooms), placeholder in tertiary.
           // Narrow panels reserve two lines so a wrapped rotating tip is never clipped.

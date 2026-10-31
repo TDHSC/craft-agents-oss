@@ -4,6 +4,7 @@
  * Mention types:
  * - Skills:  [skill:slug]
  * - Sources: [source:slug]
+ * - Sessions: [session:id], quotes: [session:id:messageId]
  *
  * Bracket syntax allows mentions anywhere in text without word boundaries.
  */
@@ -13,10 +14,12 @@ import type { MentionItemType } from '@/components/ui/mention-menu'
 import type { LoadedSkill, LoadedSource } from '../../shared/types'
 import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
 import { getSourceIconSync, getSkillIconSync } from './icon-cache'
+import { getSessionTitle } from '@/utils/session'
+import type { SessionMeta } from '@/atoms/sessions'
 
 // Import and re-export parsing functions from shared (pure string operations, no renderer deps)
-import { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, type ParsedMentions } from '@craft-agent/shared/mentions'
-export { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, type ParsedMentions }
+import { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, resolveSessionMentions, SESSION_MENTION_PATTERN, type ParsedMentions } from '@craft-agent/shared/mentions'
+export { parseMentions, stripAllMentions, resolveSkillMentions, resolveSourceMentions, resolveSessionMentions, type ParsedMentions }
 
 // ============================================================================
 // Constants
@@ -37,6 +40,8 @@ export interface MentionMatch {
   fullMatch: string
   /** Start index in the original text */
   startIndex: number
+  /** Message ID for quote tokens ([session:id:messageId]) */
+  messageId?: string
 }
 
 // ============================================================================
@@ -111,6 +116,18 @@ export function findMentionMatches(
     })
   }
 
+  // Match session mentions and quotes: [session:id] or [session:id:messageId]
+  const sessionPattern = new RegExp(`(${SESSION_MENTION_PATTERN})`, 'g')
+  while ((match = sessionPattern.exec(text)) !== null) {
+    matches.push({
+      type: match[3] ? 'quote' : 'session',
+      id: match[2],
+      fullMatch: match[1],
+      startIndex: match.index,
+      messageId: match[3],
+    })
+  }
+
   // Sort by position
   return matches.sort((a, b) => a.startIndex - b.startIndex)
 }
@@ -136,6 +153,12 @@ export function removeMention(text: string, type: MentionItemType, id: string): 
     case 'folder':
       pattern = new RegExp(`\\[folder:${escapeRegExp(id)}\\]`, 'g')
       break
+    case 'session':
+      pattern = new RegExp(`\\[session:${escapeRegExp(id)}\\]`, 'g')
+      break
+    case 'quote':
+      pattern = new RegExp(`\\[session:${escapeRegExp(id)}:[\\w-]+\\]`, 'g')
+      break
     case 'skill':
     default:
       // Match both [skill:slug] and [skill:workspaceId:slug]
@@ -159,7 +182,7 @@ export function hasMentions(
   availableSourceSlugs: string[]
 ): boolean {
   const mentions = parseMentions(text, availableSkillSlugs, availableSourceSlugs)
-  return mentions.skills.length > 0 || mentions.sources.length > 0 || mentions.files.length > 0 || mentions.folders.length > 0
+  return mentions.skills.length > 0 || mentions.sources.length > 0 || mentions.files.length > 0 || mentions.folders.length > 0 || mentions.sessions.length > 0
 }
 
 // ============================================================================
@@ -198,13 +221,15 @@ export function stripSkillMentions(text: string): string {
  * @param skills - Available skills (for label lookup)
  * @param sources - Available sources (for label lookup)
  * @param workspaceId - Workspace ID (for icon lookup)
+ * @param sessions - Workspace sessions (for session title lookup)
  * @returns Array of ContentBadge objects
  */
 export function extractBadges(
   text: string,
   skills: LoadedSkill[],
   sources: LoadedSource[],
-  workspaceId: string
+  workspaceId: string,
+  sessions: SessionMeta[] = []
 ): ContentBadge[] {
   const skillSlugs = skills.map(s => s.slug)
   const sourceSlugs = sources.map(s => s.config.slug)
@@ -213,6 +238,7 @@ export function extractBadges(
   // Build lookup maps to avoid linear scans per match
   const skillsBySlug = new Map(skills.map(s => [s.slug, s]))
   const sourcesBySlug = new Map(sources.map(s => [s.config.slug, s]))
+  const sessionsById = new Map(sessions.map(s => [s.id, s]))
 
   return matches.map(match => {
     let label = match.id
@@ -239,6 +265,10 @@ export function extractBadges(
       // Show folder name as label, full relative path stored for tooltip
       label = match.id.split('/').pop() || match.id
       filePath = match.id
+    } else if (match.type === 'session' || match.type === 'quote') {
+      // Title at send time (the stored badge doesn't follow later renames)
+      const session = sessionsById.get(match.id)
+      label = session ? getSessionTitle(session) : match.id
     }
 
     // For skills, create fully-qualified rawText (pluginName:slug) so the agent
@@ -252,7 +282,7 @@ export function extractBadges(
     }
 
     return {
-      type: match.type as 'source' | 'skill' | 'file' | 'folder',
+      type: match.type as ContentBadge['type'],
       label,
       rawText,
       iconDataUrl,

@@ -1384,7 +1384,7 @@ export default function App() {
       // Merge with any externally provided badges (e.g., from EditPopover context badges)
       // Use workspace slug (not UUID) for skill qualification - SDK expects "workspaceSlug:skillSlug"
       const mentionBadges: ContentBadge[] = windowWorkspaceSlug
-        ? extractBadges(message, skills, sources, windowWorkspaceSlug)
+        ? extractBadges(message, skills, sources, windowWorkspaceSlug, [...store.get(sessionMetaMapAtom).values()])
         : []
       const badges: ContentBadge[] = [...(externalBadges || []), ...mentionBadges]
 

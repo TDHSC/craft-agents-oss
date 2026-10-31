@@ -12,6 +12,8 @@ import {
 } from '@/lib/icon-cache'
 import type { LoadedSkill, LoadedSource } from '../../../shared/types'
 import type { MentionItemType } from './mention-menu'
+import type { SessionMeta } from '@/atoms/sessions'
+import { getSessionTitle } from '@/utils/session'
 
 // ============================================================================
 // Types
@@ -53,6 +55,8 @@ export interface RichTextInputProps extends Omit<React.HTMLAttributes<HTMLDivEle
   skills?: LoadedSkill[]
   /** Available sources for mention parsing */
   sources?: LoadedSource[]
+  /** Workspace sessions for session mention badge titles */
+  sessions?: SessionMeta[]
   /** Workspace ID for avatars */
   workspaceId?: string
   /** Whether the input is disabled */
@@ -92,6 +96,11 @@ export interface RichTextInputHandle {
 
 // SVG icons as HTML strings (avoiding react-dom/server which doesn't work in browser)
 const SKILL_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`
+
+// Lucide MessageSquare / Quote, same sizing as the skill and source icons
+const SESSION_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`
+
+const QUOTE_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/></svg>`
 
 const SOURCE_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`
 
@@ -159,6 +168,8 @@ function renderBadgeHTML(
       iconHtml = isCodeFile(label) ? CODE_FILE_ICON_SVG : FILE_ICON_SVG
     } else if (type === 'folder') {
       iconHtml = FOLDER_ICON_SVG
+    } else if (type === 'session' || type === 'quote') {
+      iconHtml = `<span class="h-[12px] w-[12px] rounded-xs bg-fill-hover flex items-center justify-center text-tertiary shrink-0">${type === 'quote' ? QUOTE_ICON_SVG : SESSION_ICON_SVG}</span>`
     }
   }
 
@@ -358,7 +369,8 @@ function textToHTML(
   text: string,
   skills: LoadedSkill[],
   sources: LoadedSource[],
-  workspaceId?: string
+  workspaceId?: string,
+  sessions: SessionMeta[] = []
 ): string {
   if (!text) return ''
 
@@ -410,6 +422,11 @@ function textToHTML(
     } else if (match.type === 'folder') {
       // Show folder name as badge label, full path as tooltip
       label = match.id.split('/').pop() || match.id
+      tooltip = match.id
+    } else if (match.type === 'session' || match.type === 'quote') {
+      // Show session title as badge label, session ID as tooltip
+      const session = sessions.find(s => s.id === match.id)
+      label = session ? getSessionTitle(session) : match.id
       tooltip = match.id
     }
 
@@ -507,6 +524,7 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
       placeholder,
       skills = [],
       sources = [],
+      sessions = [],
       workspaceId,
       disabled = false,
       className,
@@ -610,7 +628,7 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
         lastMentionSignatureRef.current = newSignature
         // Re-render with badges
         isInternalUpdate.current = true
-        const html = textToHTML(newText, skills, sources, workspaceId)
+        const html = textToHTML(newText, skills, sources, workspaceId, sessions)
         divRef.current.innerHTML = html || '<br>' // Empty contenteditable needs a BR
         // Restore cursor
         setCursorPosition(divRef.current, cursorPos)
@@ -619,7 +637,7 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
 
       onChange(newText)
       onInput?.(newText, cursorPos)
-    }, [onChange, onInput, skills, sources, skillSlugs, sourceSlugs, workspaceId])
+    }, [onChange, onInput, skills, sources, sessions, skillSlugs, sourceSlugs, workspaceId])
 
     // Handle composition (IME)
     const handleCompositionStart = React.useCallback(() => {
@@ -695,7 +713,7 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
       lastValueRef.current = safeValue
       lastMentionSignatureRef.current = getMentionSignature(safeValue, skillSlugs, sourceSlugs)
 
-      const html = textToHTML(safeValue, skills, sources, workspaceId)
+      const html = textToHTML(safeValue, skills, sources, workspaceId, sessions)
       divRef.current.innerHTML = html || '<br>'
 
       // Restore cursor position after innerHTML update.
@@ -708,13 +726,13 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
         setCursorPosition(divRef.current, cursorPos)
         pendingCursorRef.current = null // Clear after use
       }
-    }, [safeValue, skills, sources, skillSlugs, sourceSlugs, workspaceId])
+    }, [safeValue, skills, sources, sessions, skillSlugs, sourceSlugs, workspaceId])
 
     // Initialize content on mount
     React.useEffect(() => {
       if (!divRef.current) return
       lastMentionSignatureRef.current = getMentionSignature(safeValue, skillSlugs, sourceSlugs)
-      const html = textToHTML(safeValue, skills, sources, workspaceId)
+      const html = textToHTML(safeValue, skills, sources, workspaceId, sessions)
       divRef.current.innerHTML = html || '<br>'
       lastValueRef.current = safeValue
     }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -770,7 +788,7 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
     // Check if value contains any mentions (badges) to adjust line height
     const hasMentions = React.useMemo(() => {
       const mentions = parseMentions(safeValue, skillSlugs, sourceSlugs)
-      return mentions.skills.length > 0 || mentions.sources.length > 0 || mentions.files.length > 0 || mentions.folders.length > 0
+      return mentions.skills.length > 0 || mentions.sources.length > 0 || mentions.files.length > 0 || mentions.folders.length > 0 || mentions.sessions.length > 0
     }, [safeValue, skillSlugs, sourceSlugs])
 
     return (
