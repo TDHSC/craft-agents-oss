@@ -251,7 +251,7 @@
   "chat.inputFailedDescription": "The rest of this chat is still available. You can retry, or clear the local draft if it became corrupted.",
   "chat.inputFailedTitle": "The input failed to load",
   "chat.learnMore": "Learn More",
-  "chat.mentionFilesSkillsSources": "Mention files, skills, sources",
+  "chat.mentionFilesSkillsSourcesSessions": "Mention files, skills, sources, sessions",
   "chat.modelPicker.contextSection": "Context",
   "chat.modelPicker.modelsSection": "Models",
   "chat.modelPicker.openAiSettings": "Open AI settings",

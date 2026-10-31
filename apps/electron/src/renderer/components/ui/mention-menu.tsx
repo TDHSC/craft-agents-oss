@@ -314,7 +314,7 @@ export function InlineMentionMenu({
     >
       {/* Menu header — sticky above scroll area */}
       <div className={cn(INLINE_MENU_SECTION_LABEL, 'px-3')}>
-        {t('chat.mentionFilesSkillsSources')}
+        {t('chat.mentionFilesSkillsSourcesSessions')}
       </div>
 
       <div ref={listRef} className={cn(MENU_LIST_STYLE, 'pt-0')}>

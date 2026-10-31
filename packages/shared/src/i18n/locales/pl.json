@@ -255,7 +255,7 @@
   "chat.inputFailedDescription": "Reszta tego czatu jest nadal dostępna. Możesz spróbować ponownie albo wyczyścić lokalny szkic, jeśli został uszkodzony.",
   "chat.inputFailedTitle": "Nie udało się załadować pola wejściowego",
   "chat.learnMore": "Dowiedz się więcej",
-  "chat.mentionFilesSkillsSources": "Wspomnij pliki, umiejętności, źródła",
+  "chat.mentionFilesSkillsSourcesSessions": "Wspomnij pliki, umiejętności, źródła, sesje",
   "chat.modelPicker.contextSection": "Kontekst",
   "chat.modelPicker.modelsSection": "Modele",
   "chat.modelPicker.openAiSettings": "Otwórz ustawienia AI",

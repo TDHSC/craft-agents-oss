@@ -251,7 +251,7 @@
   "chat.inputFailedDescription": "此聊天的其余部分仍可使用。你可以重试，或者在本地草稿损坏时将其清除。",
   "chat.inputFailedTitle": "输入区域加载失败",
   "chat.learnMore": "了解更多",
-  "chat.mentionFilesSkillsSources": "提及文件、技能、数据源",
+  "chat.mentionFilesSkillsSourcesSessions": "提及文件、技能、数据源、会话",
   "chat.modelPicker.contextSection": "上下文",
   "chat.modelPicker.modelsSection": "模型",
   "chat.modelPicker.openAiSettings": "打开 AI 设置",
