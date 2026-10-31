@@ -1660,7 +1660,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         onQuote={async (messageId: string) => {
                           if (!session) return
                           const anchorId = getQuoteAnchorMessageId(session.messages, messageId)
-                          await navigator.clipboard.writeText(formatSessionMention(session.id, anchorId))
+                          // Trailing space, like an @-mention, so text typed after the pasted badge stays separate
+                          await navigator.clipboard.writeText(formatSessionMention(session.id, anchorId) + ' ')
                           toast.success(t('toast.copied'))
                         }}
                         onBranch={session?.supportsBranching ? async (messageId: string, options?: { newPanel?: boolean }) => {
