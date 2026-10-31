@@ -543,7 +543,6 @@ export type SessionCommand =
   | { type: 'setProjectId'; projectId: string | null }
   | { type: 'setKanbanColumn'; column: string | null }
   | { type: 'showInFinder' }
-  | { type: 'copyPath' }
   | { type: 'shareToViewer' }
   | { type: 'updateShare' }
   | { type: 'revokeShare' }

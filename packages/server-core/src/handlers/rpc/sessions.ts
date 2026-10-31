@@ -357,11 +357,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         }
         return
       }
-      case 'copyPath': {
-        // Return the session folder path for copying to clipboard
-        const sessionPath = sessionManager.getSessionPath(sessionId)
-        return sessionPath ? { success: true, path: sessionPath } : { success: false }
-      }
       case 'shareToViewer':
         return sessionManager.shareToViewer(sessionId)
       case 'updateShare':

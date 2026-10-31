@@ -2,7 +2,7 @@
  * useSessionMenuActions
  *
  * Single source of truth for session-menu side effects (share / refresh title /
- * copy path / show in finder / open in new panel / share-submenu actions / label
+ * copy session ID / show in finder / open in new panel / share-submenu actions / label
  * toggle). Consumed by both `SessionMenu` (desktop dropdown / context menu) and
  * `CompactSessionMenu` (compact-mode drawer) so a new session action only has
  * to be wired through one place.
@@ -43,7 +43,7 @@ export interface SessionMenuActions {
   toggleLabel: (labelId: string) => void
   share: () => Promise<void>
   showInFinder: () => void
-  copyPath: () => Promise<void>
+  copySessionId: () => Promise<void>
   refreshTitle: () => Promise<void>
   openInNewPanel: () => void
   /** Open the session's published share URL in the system browser (no-op if not shared). */
@@ -147,12 +147,9 @@ export function useSessionMenuActions({
     window.electronAPI.sessionCommand(sessionId, { type: 'showInFinder' })
   }, [sessionId])
 
-  const copyPath = React.useCallback(async () => {
-    const result = await window.electronAPI.sessionCommand(sessionId, { type: 'copyPath' }) as { success: boolean; path?: string } | undefined
-    if (result?.success && result.path) {
-      await navigator.clipboard.writeText(result.path)
-      toast.success(t('toast.pathCopied'))
-    }
+  const copySessionId = React.useCallback(async () => {
+    await navigator.clipboard.writeText(sessionId)
+    toast.success(t('toast.copied'))
   }, [sessionId, t])
 
   const refreshTitle = React.useCallback(async () => {
@@ -204,7 +201,7 @@ export function useSessionMenuActions({
     toggleLabel,
     share,
     showInFinder,
-    copyPath,
+    copySessionId,
     refreshTitle,
     openInNewPanel,
     openSharedInBrowser,
