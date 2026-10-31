@@ -607,10 +607,11 @@ export function useInlineMention({
     currentInputRef.current = { value, cursorPosition }
 
     const textBeforeCursor = value.slice(0, cursorPosition)
-    // Match @ followed by up to 100 chars (word chars, hyphens, slashes, dots, and spaces).
-    // Spaces are allowed so users can type filenames with spaces (e.g. @app availability.md).
-    // The menu auto-closes when a space produces no matches (Slack-style behavior).
-    const atMatch = textBeforeCursor.match(/@([\w\-\/.\s]{0,100})?$/)
+    // Match @ followed by up to 100 chars (letters/digits in any script, underscores, hyphens,
+    // slashes, dots, and spaces). Unicode letters let users search non-English session titles and
+    // filenames (e.g. @修复登录). Spaces are allowed so users can type filenames with spaces
+    // (e.g. @app availability.md). The menu auto-closes when a space produces no matches (Slack-style behavior).
+    const atMatch = textBeforeCursor.match(/@([\p{L}\p{N}_\-\/.\s]{0,100})?$/u)
 
     // Check if this is a valid @ mention trigger
     const matchStart = atMatch ? textBeforeCursor.lastIndexOf('@') : -1
