@@ -234,6 +234,7 @@
   "chat.contextUsage.waitToCompact": "Poczekaj na zakończenie bieżącej operacji przed kompaktowaniem",
   "chat.continueResponse": "Kontynuuj",
   "chat.conversationCompacted": "Rozmowa skompaktowana",
+  "chat.copyQuote": "Kopiuj cytat",
   "chat.credentials.authenticationRequired": "Wymagane uwierzytelnienie",
   "chat.credentials.hideValue": "Ukryj wartość",
   "chat.credentials.showValue": "Pokaż wartość",

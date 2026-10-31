@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy, FileText, GitBranch, Maximize2 } from 'lucide-react'
+import { Check, Copy, FileText, GitBranch, Maximize2, Quote } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../tooltip'
 import {
@@ -56,6 +56,8 @@ export interface ResponseFooterProps {
   onPopOut?: () => void
   /** Open the fullscreen reader */
   onViewFullscreen?: () => void
+  /** Copy a quote token for this reply (to paste into another session) */
+  onQuote?: () => void
   onBranch?: (options?: { newPanel?: boolean }) => void
   /**
    * 'answer': quiet icon row under the answer, revealed on hover/focus of the answer.
@@ -67,7 +69,7 @@ export interface ResponseFooterProps {
 }
 
 /**
- * Response footer (spec §7.4 "Turn footer"): Copy · Markdown · Fullscreen · Branch as named
+ * Response footer (spec §7.4 "Turn footer"): Copy · Markdown · Fullscreen · Quote · Branch as named
  * 24px icon buttons with tooltips — the same actions as the former text buttons.
  */
 export function ResponseFooter({
@@ -75,6 +77,7 @@ export function ResponseFooter({
   onCopy,
   onPopOut,
   onViewFullscreen,
+  onQuote,
   onBranch,
   variant,
   trailing,
@@ -114,6 +117,15 @@ export function ResponseFooter({
           tooltip
           icon={<Maximize2 />}
           onClick={onViewFullscreen}
+          className="turn-action-btn select-none"
+        />
+      )}
+      {onQuote && (
+        <TurnIconButton
+          aria-label={t('chat.copyQuote')}
+          tooltip
+          icon={<Quote />}
+          onClick={onQuote}
           className="turn-action-btn select-none"
         />
       )}

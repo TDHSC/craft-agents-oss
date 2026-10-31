@@ -230,6 +230,7 @@
   "chat.contextUsage.waitToCompact": "Wait for the current operation before compacting",
   "chat.continueResponse": "Continue",
   "chat.conversationCompacted": "Conversation compacted",
+  "chat.copyQuote": "Copy quote",
   "chat.credentials.authenticationRequired": "Authentication Required",
   "chat.credentials.hideValue": "Hide value",
   "chat.credentials.showValue": "Show value",

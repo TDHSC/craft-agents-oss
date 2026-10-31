@@ -230,6 +230,7 @@
   "chat.contextUsage.waitToCompact": "Várj az aktuális művelet befejezéséig a tömörítés előtt",
   "chat.continueResponse": "Folytatás",
   "chat.conversationCompacted": "Beszélgetés tömörítve",
+  "chat.copyQuote": "Idézet másolása",
   "chat.credentials.authenticationRequired": "Hitelesítés szükséges",
   "chat.credentials.hideValue": "Érték elrejtése",
   "chat.credentials.showValue": "Érték megjelenítése",

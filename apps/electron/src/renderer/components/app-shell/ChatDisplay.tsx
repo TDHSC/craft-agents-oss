@@ -57,6 +57,8 @@ import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
 import type { BackgroundTask } from "@/atoms/sessions"
 import type { BackgroundTaskOutput } from "@craft-agent/shared/protocol"
 import { getResumableStop } from "@craft-agent/shared/sessions/resumable-stop"
+import { formatSessionMention } from "@craft-agent/shared/mentions"
+import { getQuoteAnchorMessageId } from "@/utils/session"
 import { agentDocument } from "./BackgroundTaskChip"
 import { runCommandMessage } from "@/lib/run-command-message"
 import { useTurnCardExpansion } from "@/hooks/useTurnCardExpansion"
@@ -1655,6 +1657,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         compactMode={compactMode}
                         sendMessageKey={sendMessageKey}
                         openAnnotationRequest={openAnnotationRequest}
+                        onQuote={async (messageId: string) => {
+                          if (!session) return
+                          const anchorId = getQuoteAnchorMessageId(session.messages, messageId)
+                          await navigator.clipboard.writeText(formatSessionMention(session.id, anchorId))
+                          toast.success(t('toast.copied'))
+                        }}
                         onBranch={session?.supportsBranching ? async (messageId: string, options?: { newPanel?: boolean }) => {
                           if (!session) return
                           try {

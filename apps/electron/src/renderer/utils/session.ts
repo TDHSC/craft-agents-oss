@@ -130,6 +130,18 @@ export function getLastFinalAssistantMessageId(session: Session): string | undef
 }
 
 /**
+ * Message ID a quote of the given reply should start from: the nearest preceding visible
+ * user message (so the reader sees the question), else the reply itself.
+ */
+export function getQuoteAnchorMessageId(messages: Message[], replyMessageId: string): string {
+  const replyIndex = messages.findIndex(m => m.id === replyMessageId)
+  for (let i = replyIndex - 1; i >= 0; i--) {
+    if (messages[i].role === 'user' && !messages[i].hidden) return messages[i].id
+  }
+  return replyMessageId
+}
+
+/**
  * Check if a session has unread messages
  * A session is unread if:
  * - There's a final assistant message AND

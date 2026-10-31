@@ -211,6 +211,8 @@ export interface TurnCardProps {
   compactMode?: boolean
   /** Callback to branch the session from a specific message */
   onBranch?: (messageId: string, options?: { newPanel?: boolean }) => void
+  /** Callback to copy a quote of a specific response message */
+  onQuote?: (messageId: string) => void
   /** Callback to add an annotation to a response message */
   onAddAnnotation?: (messageId: string, annotation: AnnotationV1) => void
   /** Callback to remove a persisted annotation from a response message */
@@ -417,6 +419,8 @@ export interface ResponseCardProps {
   compactMode?: boolean
   /** Callback to branch the session from this response */
   onBranch?: (options?: { newPanel?: boolean }) => void
+  /** Callback to copy a quote of this response */
+  onQuote?: () => void
   /** Callback to add annotation from selected text */
   onAddAnnotation?: (messageId: string, annotation: AnnotationV1) => void
   /** Callback to remove persisted annotation */
@@ -624,6 +628,7 @@ export function ResponseCard({
   isLastResponse = true,
   showAcceptPlan = true,
   compactMode = false,
+  onQuote,
   onBranch,
   onAddAnnotation,
   onRemoveAnnotation,
@@ -1426,6 +1431,7 @@ export function ResponseCard({
       onCopy={handleCopy}
       onPopOut={onPopOut}
       onViewFullscreen={() => setIsFullscreen(true)}
+      onQuote={onQuote}
       onBranch={onBranch}
       trailing={canAcceptPlan ? (
         <div
@@ -1548,6 +1554,7 @@ export const TurnCard = React.memo(function TurnCard({
   displayMode = 'detailed',
   animateResponse = false,
   compactMode = false,
+  onQuote,
   onBranch,
   onAddAnnotation,
   onRemoveAnnotation,
@@ -1739,6 +1746,7 @@ export const TurnCard = React.memo(function TurnCard({
       onAcceptWithCompact={onAcceptPlanWithCompact}
       isLastResponse={isLastResponse}
       compactMode={compactMode}
+      onQuote={onQuote && resp.messageId ? () => onQuote(resp.messageId!) : undefined}
       onBranch={onBranch && resp.messageId ? (options?: { newPanel?: boolean }) => onBranch(resp.messageId!, options) : undefined}
       sendMessageKey={sendMessageKey}
       hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
