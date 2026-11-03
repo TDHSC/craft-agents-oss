@@ -14,7 +14,7 @@
  * baseline count and validating relative to it.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -309,6 +309,18 @@ describe('loadWorkspaceSkills', () => {
     expect(skills).toHaveLength(1);
     expect(skills[0]!.slug).toBe('real-skill');
   });
+
+  it('should load symlinked skill folders and skip dangling or file links', () => {
+    const skillsDir = join(workspaceRoot, 'skills');
+    const target = createSkill(join(tempDir, 'shared-skills'), 'linked');
+    symlinkSync(target, join(skillsDir, 'linked'));
+    symlinkSync(join(tempDir, 'missing'), join(skillsDir, 'dangling'));
+    writeFileSync(join(tempDir, 'note.txt'), 'not a skill');
+    symlinkSync(join(tempDir, 'note.txt'), join(skillsDir, 'file-link'));
+
+    expect(loadWorkspaceSkills(workspaceRoot).map(s => s.slug)).toEqual(['linked']);
+    expect(listSkillSlugs(workspaceRoot)).toEqual(['linked']);
+  });
 });
 
 // ============================================================
@@ -504,6 +516,17 @@ describe('loadAllSkills', () => {
     for (const skill of globalSkills) {
       expect(skill.source).toBe('global');
     }
+  });
+
+  it('should load project skills that are symlinks into another folder', () => {
+    const projDir = getProjectSkillsDir();
+    mkdirSync(projDir, { recursive: true });
+    const target = createSkill(join(tempDir, 'skill-repo'), `${TEST_PREFIX}linked`);
+    symlinkSync(target, join(projDir, `${TEST_PREFIX}linked`));
+
+    const linked = loadAllSkills(workspaceRoot, projectRoot)
+      .find(s => s.slug === `${TEST_PREFIX}linked`);
+    expect(linked?.source).toBe('project');
   });
 
   it('should deduplicate by slug across workspace and project tiers', () => {
