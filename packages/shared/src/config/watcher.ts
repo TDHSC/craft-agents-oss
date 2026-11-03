@@ -815,6 +815,8 @@ export class ConfigWatcher {
   private handleSkillChange(slug: string): void {
     debug('[ConfigWatcher] Skill changed:', slug);
 
+    // Listeners reload the full list (loadAllSkills), which is cached.
+    invalidateSkillsCache();
     const skill = loadSkill(this.workspaceDir, slug);
     this.callbacks.onSkillChange?.(slug, skill);
 
@@ -828,6 +830,7 @@ export class ConfigWatcher {
         .then((iconPath) => {
           if (iconPath) {
             // Reload the skill with the new icon and emit another change
+            invalidateSkillsCache();
             const updatedSkill = loadSkill(this.workspaceDir, slug);
             debug('[ConfigWatcher] Icon downloaded, emitting updated skill:', slug);
             this.callbacks.onSkillChange?.(slug, updatedSkill);

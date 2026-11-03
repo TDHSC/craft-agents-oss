@@ -611,6 +611,8 @@ function AppShellContent({
 
   // Skills state (workspace-scoped)
   const [skills, setSkills] = React.useState<LoadedSkill[]>([])
+  // Bumped by skills-changed broadcasts to reload the list below
+  const [skillsReloadKey, setSkillsReloadKey] = React.useState(0)
   // Sync skills to atom for NavigationContext auto-selection
   const setSkillsAtom = useSetAtom(skillsAtom)
   React.useEffect(() => {
@@ -771,9 +773,12 @@ function AppShellContent({
 
   // Subscribe to live skill updates (when skills are added/removed dynamically)
   React.useEffect(() => {
-    const cleanup = window.electronAPI.onSkillsChanged((workspaceId, updatedSkills) => {
+    // The broadcast list holds only global and workspace skills (the server
+    // does not know which session this window shows), so reload with the
+    // active session's working directory instead of using it.
+    const cleanup = window.electronAPI.onSkillsChanged((workspaceId) => {
       if (workspaceId !== activeWorkspaceId) return
-      setSkills(updatedSkills || [])
+      setSkillsReloadKey(key => key + 1)
     })
     return cleanup
   }, [activeWorkspaceId])
@@ -1136,12 +1141,14 @@ function AppShellContent({
     : undefined
   React.useEffect(() => {
     if (!activeWorkspaceId) return
+    let stale = false
     window.electronAPI.getSkills(activeWorkspaceId, activeSessionWorkingDirectory).then((loaded) => {
-      setSkills(loaded || [])
+      if (!stale) setSkills(loaded || [])
     }).catch(err => {
       console.error('[Chat] Failed to load skills:', err)
     })
-  }, [activeWorkspaceId, activeSessionWorkingDirectory])
+    return () => { stale = true }
+  }, [activeWorkspaceId, activeSessionWorkingDirectory, skillsReloadKey])
 
   // Filter session metadata by active workspace
   // Also exclude hidden sessions (mini-agent sessions) from all counts and lists
